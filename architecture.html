@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyOz — Architecture</title>
+<style>
+  /* ══════════════════════════════════════════
+     DESIGN SYSTEM
+     ══════════════════════════════════════════ */
+  :root {
+    --bg:         #0a0a0f;
+    --bg-card:    #12121a;
+    --bg-hover:   #1a1a28;
+    --bg-glass:   rgba(18, 18, 26, 0.85);
+    --border:     #1e1e2e;
+    --border-glow:#2a2a40;
+    --text:       #e2e2e8;
+    --text-dim:   #6e6e82;
+    --text-muted: #4a4a5e;
+    --accent:     #a855f7;
+    --accent-dim: #7c3aed;
+    --cyan:       #22d3ee;
+    --green:      #34d399;
+    --amber:      #fbbf24;
+    --rose:       #fb7185;
+    --blue:       #60a5fa;
+    --orange:     #fb923c;
+    --pink:       #f472b6;
+    --teal:       #2dd4bf;
+    --radius:     12px;
+    --radius-sm:  8px;
+    --radius-xs:  6px;
+    --shadow:     0 4px 24px rgba(0,0,0,0.4);
+    --shadow-lg:  0 8px 40px rgba(0,0,0,0.5);
+    --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* ══════════════════════════════════════════
+     BACKGROUND EFFECTS
+     ══════════════════════════════════════════ */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse 800px 600px at 20% 10%, rgba(168,85,247,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 600px 400px at 80% 30%, rgba(34,211,238,0.04) 0%, transparent 70%),
+      radial-gradient(ellipse 900px 500px at 50% 80%, rgba(168,85,247,0.03) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .grid-bg {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ══════════════════════════════════════════
+     LAYOUT
+     ══════════════════════════════════════════ */
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 32px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ══════════════════════════════════════════
+     HERO
+     ══════════════════════════════════════════ */
+  .hero {
+    text-align: center;
+    padding: 80px 0 60px;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(168,85,247,0.1);
+    border: 1px solid rgba(168,85,247,0.2);
+    border-radius: 100px;
+    padding: 6px 18px;
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 24px;
+  }
+
+  .hero h1 {
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #fff 0%, #a855f7 50%, #22d3ee 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero p {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 600px;
+    margin: 0 auto 40px;
+    line-height: 1.7;
+  }
+
+  .hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 48px;
+    flex-wrap: wrap;
+  }
+
+  .hero-stat {
+    text-align: center;
+  }
+
+  .hero-stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.5px;
+  }
+
+  .hero-stat-label {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ══════════════════════════════════════════
+     FLOW DIAGRAM
+     ══════════════════════════════════════════ */
+  .section {
+    margin-bottom: 80px;
+  }
+
+  .section-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  .section-desc {
+    color: var(--text-dim);
+    font-size: 15px;
+    margin-bottom: 36px;
+    max-width: 640px;
+  }
+
+  /* Main flow */
+  .flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    padding: 20px 0;
+  }
+
+  .flow-step {
+    flex: 1;
+    min-width: 160px;
+    position: relative;
+    text-align: center;
+  }
+
+  .flow-node {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 16px;
+    transition: var(--transition);
+    position: relative;
+  }
+
+  .flow-node:hover {
+    border-color: var(--accent-dim);
+    background: var(--bg-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(168,85,247,0.1);
+  }
+
+  .flow-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+
+  .flow-name {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #fff;
+  }
+
+  .flow-detail {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    min-width: 48px;
+    color: var(--text-muted);
+    font-size: 18px;
+    position: relative;
+  }
+
+  .flow-arrow::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 12px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border) 0%, var(--text-muted) 100%);
+  }
+
+  .flow-arrow::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    border-top: 1.5px solid var(--text-muted);
+    border-right: 1.5px solid var(--text-muted);
+    transform: translateY(-50%) rotate(45deg);
+  }
+
+  /* ══════════════════════════════════════════
+     LAYER ARCHITECTURE
+     ══════════════════════════════════════════ */
+  .layers {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+  }
+
+  .layer {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 0;
+    align-items: stretch;
+    min-height: 80px;
+  }
+
+  .layer-label {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: var(--radius) 0 0 var(--radius);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 16px 20px;
+    position: relative;
+  }
+
+  .layer-label::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 2px;
+  }
+
+  .layer-label-name {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .layer-label-file {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    margin-top: 2px;
+  }
+
+  .layer-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .layer:hover .layer-content,
+  .layer:hover .layer-label {
+    background: var(--bg-hover);
+    transition: var(--transition);
+  }
+
+  .layer-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid;
+    white-space: nowrap;
+    transition: var(--transition);
+    cursor: default;
+  }
+
+  .layer-chip:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Color variants */
+  .c-purple  { color: var(--accent); border-color: rgba(168,85,247,0.25); background: rgba(168,85,247,0.08); }
+  .c-cyan    { color: var(--cyan);   border-color: rgba(34,211,238,0.25); background: rgba(34,211,238,0.08); }
+  .c-green   { color: var(--green);  border-color: rgba(52,211,153,0.25); background: rgba(52,211,153,0.08); }
+  .c-amber   { color: var(--amber);  border-color: rgba(251,191,36,0.25); background: rgba(251,191,36,0.08); }
+  .c-rose    { color: var(--rose);   border-color: rgba(251,113,133,0.25);background: rgba(251,113,133,0.08); }
+  .c-blue    { color: var(--blue);   border-color: rgba(96,165,250,0.25); background: rgba(96,165,250,0.08); }
+  .c-orange  { color: var(--orange); border-color: rgba(251,146,60,0.25); background: rgba(251,146,60,0.08); }
+  .c-pink    { color: var(--pink);   border-color: rgba(244,114,182,0.25);background: rgba(244,114,182,0.08); }
+  .c-teal    { color: var(--teal);   border-color: rgba(45,212,191,0.25); background: rgba(45,212,191,0.08); }
+
+  .layer-label.l-purple .layer-label-name { color: var(--accent); }
+  .layer-label.l-purple::after { background: var(--accent); }
+  .layer-label.l-cyan .layer-label-name { color: var(--cyan); }
+  .layer-label.l-cyan::after { background: var(--cyan); }
+  .layer-label.l-green .layer-label-name { color: var(--green); }
+  .layer-label.l-green::after { background: var(--green); }
+  .layer-label.l-amber .layer-label-name { color: var(--amber); }
+  .layer-label.l-amber::after { background: var(--amber); }
+  .layer-label.l-rose .layer-label-name { color: var(--rose); }
+  .layer-label.l-rose::after { background: var(--rose); }
+  .layer-label.l-blue .layer-label-name { color: var(--blue); }
+  .layer-label.l-blue::after { background: var(--blue); }
+  .layer-label.l-orange .layer-label-name { color: var(--orange); }
+  .layer-label.l-orange::after { background: var(--orange); }
+  .layer-label.l-teal .layer-label-name { color: var(--teal); }
+  .layer-label.l-teal::after { background: var(--teal); }
+
+  /* ══════════════════════════════════════════
+     COMPONENT CARDS
+     ══════════════════════════════════════════ */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 20px;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: var(--transition);
+  }
+
+  .card:hover {
+    border-color: var(--border-glow);
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 24px 0;
+  }
+
+  .card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .card-title-group {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 1px;
+  }
+
+  .card-file {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .card-body {
+    padding: 16px 24px 20px;
+  }
+
+  .card-desc {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+
+  .card-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .card-list li {
+    font-size: 11.5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  /* ══════════════════════════════════════════
+     TOOL GRID
+     ══════════════════════════════════════════ */
+  .tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+
+  .tool-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px 18px;
+    transition: var(--transition);
+    cursor: default;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tool-card:hover {
+    border-color: var(--border-glow);
+    background: var(--bg-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .tool-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+  }
+
+  .tool-card.t-purple::before { background: linear-gradient(90deg, var(--accent), transparent); }
+  .tool-card.t-cyan::before   { background: linear-gradient(90deg, var(--cyan), transparent); }
+  .tool-card.t-green::before  { background: linear-gradient(90deg, var(--green), transparent); }
+  .tool-card.t-amber::before  { background: linear-gradient(90deg, var(--amber), transparent); }
+  .tool-card.t-rose::before   { background: linear-gradient(90deg, var(--rose), transparent); }
+  .tool-card.t-blue::before   { background: linear-gradient(90deg, var(--blue), transparent); }
+  .tool-card.t-orange::before { background: linear-gradient(90deg, var(--orange), transparent); }
+  .tool-card.t-teal::before   { background: linear-gradient(90deg, var(--teal), transparent); }
+
+  .tool-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .tool-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
+  .tool-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .tool-action {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .tool-tier {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  /* ══════════════════════════════════════════
+     DATA FLOW SECTION
+     ══════════════════════════════════════════ */
+  .dataflow {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .dataflow::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--cyan), var(--green));
+  }
+
+  .dataflow h3 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: #fff;
+  }
+
+  .flow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  .flow-steps::before {
+    content: '';
+    position: absolute;
+    left: 18px;
+    top: 20px;
+    bottom: 20px;
+    width: 2px;
+    background: linear-gradient(180deg,
+      var(--accent) 0%,
+      var(--cyan) 25%,
+      var(--green) 50%,
+      var(--amber) 75%,
+      var(--accent) 100%
+    );
+    border-radius: 2px;
+  }
+
+  .df-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 12px 0;
+    position: relative;
+  }
+
+  .df-dot {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+    border: 2px solid;
+  }
+
+  .df-content {
+    flex: 1;
+    padding-top: 6px;
+  }
+
+  .df-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+
+  .df-desc {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .df-code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: var(--cyan);
+    font-size: 11.5px;
+  }
+
+  /* ══════════════════════════════════════════
+     PATTERNS TABLE
+     ══════════════════════════════════════════ */
+  .patterns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+
+  .pattern-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 20px;
+    transition: var(--transition);
+  }
+
+  .pattern-card:hover {
+    border-color: var(--border-glow);
+    background: var(--bg-hover);
+  }
+
+  .pattern-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .pattern-where {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    margin-bottom: 8px;
+  }
+
+  .pattern-why {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ══════════════════════════════════════════
+     FILE TREE
+     ══════════════════════════════════════════ */
+  .file-tree {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 32px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12.5px;
+    line-height: 2;
+    overflow-x: auto;
+  }
+
+  .file-tree .dir  { color: var(--cyan); font-weight: 600; }
+  .file-tree .file { color: var(--text-dim); }
+  .file-tree .hl   { color: var(--accent); font-weight: 600; }
+  .file-tree .note { color: var(--text-muted); font-style: italic; font-weight: 400; }
+  .file-tree .indent { padding-left: 24px; display: block; }
+  .file-tree .indent2 { padding-left: 48px; display: block; }
+
+  /* ══════════════════════════════════════════
+     SEPARATOR
+     ══════════════════════════════════════════ */
+  .sep {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 60px 0;
+  }
+
+  /* ══════════════════════════════════════════
+     FOOTER
+     ══════════════════════════════════════════ */
+  .footer {
+    text-align: center;
+    padding: 40px 0 60px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .footer a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .footer a:hover { text-decoration: underline; }
+
+  /* ══════════════════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════════════════ */
+  @media (max-width: 900px) {
+    .hero h1 { font-size: 36px; }
+    .flow { flex-direction: column; align-items: center; }
+    .flow-arrow { transform: rotate(90deg); width: 48px; height: 32px; min-width: unset; }
+    .layer { grid-template-columns: 1fr; }
+    .layer-label { border-radius: var(--radius) var(--radius) 0 0; border-right: 1px solid var(--border); border-bottom: none; }
+    .layer-label::after { display: none; }
+    .layer-content { border-radius: 0 0 var(--radius) var(--radius); border-left: 1px solid var(--border); border-top: none; }
+    .cards { grid-template-columns: 1fr; }
+    .container { padding: 0 16px; }
+    .dataflow { padding: 24px 20px; }
+  }
+
+  @media (max-width: 500px) {
+    .hero h1 { font-size: 28px; }
+    .hero-stats { gap: 24px; }
+    .tool-grid { grid-template-columns: 1fr; }
+    .patterns-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<div class="container">
+
+  <!-- ════════════════════ HERO ════════════════════ -->
+  <header class="hero">
+    <div class="hero-badge">System Architecture</div>
+    <h1>PyOz</h1>
+    <p>A pure agent-mode coding assistant with 24 cross-platform tools, multi-provider LLM support, and an agentic tool-calling loop.</p>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-value">24</div>
+        <div class="hero-stat-label">Tools</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-value">3</div>
+        <div class="hero-stat-label">LLM Providers</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-value">8</div>
+        <div class="hero-stat-label">Layers</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-value">312</div>
+        <div class="hero-stat-label">Tests</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ HIGH-LEVEL FLOW ════════════════════ -->
+  <section class="section">
+    <div class="section-label">Overview</div>
+    <div class="section-title">Request Lifecycle</div>
+    <div class="section-desc">Every user message follows the same path: input, reasoning, tool execution, and response. The agent loops until the LLM returns a final answer.</div>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-node">
+          <div class="flow-icon" style="background:rgba(168,85,247,0.12);">
+            <span style="color:var(--accent);">&#9654;</span>
+          </div>
+          <div class="flow-name">User Input</div>
+          <div class="flow-detail">CLI prompt or<br>slash command</div>
+        </div>
+      </div>
+      <div class="flow-arrow"></div>
+      <div class="flow-step">
+        <div class="flow-node">
+          <div class="flow-icon" style="background:rgba(34,211,238,0.12);">
+            <span style="color:var(--cyan);">&#9881;</span>
+          </div>
+          <div class="flow-name">Agent</div>
+          <div class="flow-detail">Context + system<br>prompt assembly</div>
+        </div>
+      </div>
+      <div class="flow-arrow"></div>
+      <div class="flow-step">
+        <div class="flow-node">
+          <div class="flow-icon" style="background:rgba(96,165,250,0.12);">
+            <span style="color:var(--blue);">&#9729;</span>
+          </div>
+          <div class="flow-name">LLM Provider</div>
+          <div class="flow-detail">Claude, OpenAI,<br>or Ollama API</div>
+        </div>
+      </div>
+      <div class="flow-arrow"></div>
+      <div class="flow-step">
+        <div class="flow-node">
+          <div class="flow-icon" style="background:rgba(251,191,36,0.12);">
+            <span style="color:var(--amber);">&#9889;</span>
+          </div>
+          <div class="flow-name">Tool Execution</div>
+          <div class="flow-detail">24 tools across<br>5 categories</div>
+        </div>
+      </div>
+      <div class="flow-arrow"></div>
+      <div class="flow-step">
+        <div class="flow-node">
+          <div class="flow-icon" style="background:rgba(52,211,153,0.12);">
+            <span style="color:var(--green);">&#10003;</span>
+          </div>
+          <div class="flow-name">Response</div>
+          <div class="flow-detail">Rich formatted<br>terminal output</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ LAYER ARCHITECTURE ════════════════════ -->
+  <section class="section">
+    <div class="section-label">Architecture</div>
+    <div class="section-title">System Layers</div>
+    <div class="section-desc">Eight layers from the user interface down to the platform abstraction. Each layer has a single responsibility and clean boundaries.</div>
+
+    <div class="layers">
+      <!-- Layer 1: UI -->
+      <div class="layer">
+        <div class="layer-label l-purple">
+          <div class="layer-label-name">UI Layer</div>
+          <div class="layer-label-file">pyoz/ui/</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-purple">Rich Console</span>
+          <span class="layer-chip c-purple">Theme Engine</span>
+          <span class="layer-chip c-purple">Input Manager</span>
+          <span class="layer-chip c-purple">Slash Commands</span>
+          <span class="layer-chip c-purple">Diff Viewer</span>
+          <span class="layer-chip c-purple">Autocomplete</span>
+        </div>
+      </div>
+
+      <!-- Layer 2: CLI -->
+      <div class="layer">
+        <div class="layer-label l-cyan">
+          <div class="layer-label-name">CLI Layer</div>
+          <div class="layer-label-file">pyoz/cli.py</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-cyan">REPL Loop</span>
+          <span class="layer-chip c-cyan">Argument Parser</span>
+          <span class="layer-chip c-cyan">Provider Factory</span>
+          <span class="layer-chip c-cyan">Signal Handling</span>
+          <span class="layer-chip c-cyan">Self-Test</span>
+        </div>
+      </div>
+
+      <!-- Layer 3: Agent -->
+      <div class="layer">
+        <div class="layer-label l-green">
+          <div class="layer-label-name">Agent Core</div>
+          <div class="layer-label-file">pyoz/agent.py</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-green">Agentic Loop</span>
+          <span class="layer-chip c-green">Tool Dispatcher</span>
+          <span class="layer-chip c-green">System Prompt</span>
+          <span class="layer-chip c-green">Context Manager</span>
+          <span class="layer-chip c-green">Conversation State</span>
+        </div>
+      </div>
+
+      <!-- Layer 4: Providers -->
+      <div class="layer">
+        <div class="layer-label l-blue">
+          <div class="layer-label-name">LLM Providers</div>
+          <div class="layer-label-file">pyoz/providers/</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-blue">Claude (Anthropic)</span>
+          <span class="layer-chip c-blue">OpenAI (GPT)</span>
+          <span class="layer-chip c-blue">Ollama (Local)</span>
+          <span class="layer-chip c-blue">Base Interface</span>
+          <span class="layer-chip c-blue">Streaming</span>
+        </div>
+      </div>
+
+      <!-- Layer 5: Tools -->
+      <div class="layer">
+        <div class="layer-label l-amber">
+          <div class="layer-label-name">Tool System</div>
+          <div class="layer-label-file">pyoz/tools/</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-amber">File Ops (5)</span>
+          <span class="layer-chip c-amber">Commands (1)</span>
+          <span class="layer-chip c-amber">Git (5)</span>
+          <span class="layer-chip c-amber">Context (2)</span>
+          <span class="layer-chip c-amber">System (5)</span>
+          <span class="layer-chip c-amber">Cloud (6)</span>
+        </div>
+      </div>
+
+      <!-- Layer 6: Indexer -->
+      <div class="layer">
+        <div class="layer-label l-orange">
+          <div class="layer-label-name">Code Indexer</div>
+          <div class="layer-label-file">pyoz/indexer/</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-orange">AST Parser</span>
+          <span class="layer-chip c-orange">Symbol Extraction</span>
+          <span class="layer-chip c-orange">Multi-Language</span>
+          <span class="layer-chip c-orange">Live Reindex</span>
+        </div>
+      </div>
+
+      <!-- Layer 7: Persistence -->
+      <div class="layer">
+        <div class="layer-label l-rose">
+          <div class="layer-label-name">Persistence</div>
+          <div class="layer-label-file">pyoz/session.py</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-rose">Session Manager</span>
+          <span class="layer-chip c-rose">Workspace Manager</span>
+          <span class="layer-chip c-rose">History Archive</span>
+          <span class="layer-chip c-rose">Markdown Export</span>
+        </div>
+      </div>
+
+      <!-- Layer 8: Platform -->
+      <div class="layer">
+        <div class="layer-label l-teal">
+          <div class="layer-label-name">Platform</div>
+          <div class="layer-label-file">pyoz/platform.py</div>
+        </div>
+        <div class="layer-content">
+          <span class="layer-chip c-teal">OS Detection</span>
+          <span class="layer-chip c-teal">PowerShell Bridge</span>
+          <span class="layer-chip c-teal">Path Normalization</span>
+          <span class="layer-chip c-teal">Command Blocking</span>
+          <span class="layer-chip c-teal">Shell Discovery</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ COMPONENT DEEP-DIVE ════════════════════ -->
+  <section class="section">
+    <div class="section-label">Components</div>
+    <div class="section-title">Deep Dive</div>
+    <div class="section-desc">Every module explained: what it does, what it exports, and how data flows through it.</div>
+
+    <div class="cards">
+
+      <!-- Agent -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(52,211,153,0.12); color:var(--green);">&#9881;</div>
+          <div class="card-title-group">
+            <div class="card-title">Agent Core</div>
+            <div class="card-file">pyoz/agent.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">The brain of PyOz. Manages the agentic loop: sends user messages to the LLM, executes tool calls the LLM requests, feeds results back, and repeats until the LLM returns a final text answer. Builds the system prompt with platform-specific instructions, codebase context, and tool selection guide. Handles context window management by summarizing old messages.</div>
+          <ul class="card-list">
+            <li>chat()</li>
+            <li>_execute_tool()</li>
+            <li>_build_system_prompt()</li>
+            <li>_manage_context()</li>
+            <li>initialize()</li>
+            <li>save_session()</li>
+            <li>reindex()</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Providers -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(96,165,250,0.12); color:var(--blue);">&#9729;</div>
+          <div class="card-title-group">
+            <div class="card-title">LLM Providers</div>
+            <div class="card-file">pyoz/providers/</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Abstract provider interface with three implementations. Each provider translates between PyOz's internal message format and the API's native format. Handles tool schema conversion, streaming SSE parsing, token counting, and retry logic with exponential backoff. The factory in cli.py picks the right provider from CLI args.</div>
+          <ul class="card-list">
+            <li>BaseLLMProvider</li>
+            <li>ClaudeProvider</li>
+            <li>OpenAIProvider</li>
+            <li>OllamaProvider</li>
+            <li>ToolCall</li>
+            <li>LLMResponse</li>
+            <li>StreamEvent</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Tool Registry -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(251,191,36,0.12); color:var(--amber);">&#9889;</div>
+          <div class="card-title-group">
+            <div class="card-title">Tool Registry</div>
+            <div class="card-file">pyoz/tools/registry.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Central registry of all 24 tool definitions with JSON schemas for function calling. Each entry defines name, description, parameter types, and required fields. Converts to Claude format (input_schema) or OpenAI format (function definitions) on demand. Descriptions are platform-aware &mdash; run_command says "PowerShell" on Windows.</div>
+          <ul class="card-list">
+            <li>TOOL_DEFINITIONS[]</li>
+            <li>get_tool_definitions_claude()</li>
+            <li>get_tool_definitions_openai()</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- AST Indexer -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(251,146,60,0.12); color:var(--orange);">&#128269;</div>
+          <div class="card-title-group">
+            <div class="card-title">AST Indexer</div>
+            <div class="card-file">pyoz/indexer/ast_indexer.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Parses source files to extract classes, methods, functions, fields, imports, and dependencies. Provides the LLM with structured codebase context so it understands the project before making changes. Uses tree-sitter when available, falls back to regex patterns. Supports Python, Java, Go, Rust, JS, TS, Kotlin, C#.</div>
+          <ul class="card-list">
+            <li>ASTIndexer</li>
+            <li>scan()</li>
+            <li>reindex_file()</li>
+            <li>get_summary()</li>
+            <li>file_count()</li>
+            <li>symbol_count()</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Platform -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(45,212,191,0.12); color:var(--teal);">&#127760;</div>
+          <div class="card-title-group">
+            <div class="card-title">Platform Abstraction</div>
+            <div class="card-file">pyoz/platform.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Cross-platform foundation that everything else builds on. Detects the OS, discovers PowerShell, maps 40+ Unix commands to PowerShell equivalents, normalizes file paths, and provides platform-specific blocked command patterns. Every tool and the system prompt adapt behavior based on these flags.</div>
+          <ul class="card-list">
+            <li>IS_WINDOWS</li>
+            <li>IS_MACOS</li>
+            <li>IS_LINUX</li>
+            <li>HAS_POWERSHELL</li>
+            <li>POWERSHELL_COMMAND_MAP</li>
+            <li>get_shell_info()</li>
+            <li>get_blocked_patterns()</li>
+            <li>normalize_path()</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Session & Workspace -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(251,113,133,0.12); color:var(--rose);">&#128190;</div>
+          <div class="card-title-group">
+            <div class="card-title">Session &amp; Workspace</div>
+            <div class="card-file">pyoz/session.py + workspace.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Persists conversation history and workspace metadata to ~/.pyoz/. Sessions auto-save after each turn so work is never lost. Workspaces let you switch between projects &mdash; each workspace has its own session, settings, and indexed state. Sessions can be archived, exported to markdown, and restored.</div>
+          <ul class="card-list">
+            <li>SessionManager</li>
+            <li>WorkspaceManager</li>
+            <li>save() / load()</li>
+            <li>archive()</li>
+            <li>export_markdown()</li>
+            <li>register() / switch()</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- CLI & UI -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(168,85,247,0.12); color:var(--accent);">&#9654;</div>
+          <div class="card-title-group">
+            <div class="card-title">CLI &amp; User Interface</div>
+            <div class="card-file">pyoz/cli.py + pyoz/ui/</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">The terminal experience. Uses Rich for styled output (panels, tables, syntax highlighting, diffs) and prompt_toolkit for input (history, autocomplete). The REPL loop handles 18 slash commands, streams tokens in real-time, displays tool calls with icons, and shows token costs per turn. Custom theme with consistent brand colors.</div>
+          <ul class="card-list">
+            <li>main() REPL</li>
+            <li>print_banner()</li>
+            <li>print_tool_call()</li>
+            <li>print_diff()</li>
+            <li>InputManager</li>
+            <li>SlashCommandCompleter</li>
+            <li>PYOZ_THEME</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Command Tools -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(34,211,238,0.12); color:var(--cyan);">&#62;</div>
+          <div class="card-title-group">
+            <div class="card-title">Command Execution</div>
+            <div class="card-file">pyoz/tools/command_tools.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Safe shell/PowerShell command execution with dangerous command blocking. On Windows, runs commands via PowerShell with -NoProfile -NonInteractive flags. On Unix, uses the default shell. Blocks destructive patterns like rm&nbsp;-rf&nbsp;/, format disk, and registry deletion. Returns stdout, stderr, and exit code. 120-second timeout.</div>
+          <ul class="card-list">
+            <li>run_command()</li>
+            <li>get_platform_command()</li>
+            <li>_check_blocked()</li>
+            <li>120s timeout</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ ALL 24 TOOLS ════════════════════ -->
+  <section class="section">
+    <div class="section-label">Tool System</div>
+    <div class="section-title">All 24 Tools</div>
+    <div class="section-desc">Five categories of tools the LLM can call autonomously. The agent's system prompt includes a selection guide telling the LLM when to prefer each tool.</div>
+
+    <div class="tool-grid">
+      <!-- File Tools -->
+      <div class="tool-card t-cyan">
+        <div class="tool-tier" style="color:var(--cyan); background:rgba(34,211,238,0.1);">Core</div>
+        <div class="tool-name">read_file</div>
+        <div class="tool-desc">Read and return file contents as a string.</div>
+        <div class="tool-actions"><span class="tool-action">path</span></div>
+      </div>
+
+      <div class="tool-card t-cyan">
+        <div class="tool-tier" style="color:var(--cyan); background:rgba(34,211,238,0.1);">Core</div>
+        <div class="tool-name">write_file</div>
+        <div class="tool-desc">Create or overwrite a file. Auto-creates directories. Triggers git auto-commit and AST re-index.</div>
+        <div class="tool-actions"><span class="tool-action">path</span><span class="tool-action">content</span></div>
+      </div>
+
+      <div class="tool-card t-cyan">
+        <div class="tool-tier" style="color:var(--cyan); background:rgba(34,211,238,0.1);">Core</div>
+        <div class="tool-name">edit_file</div>
+        <div class="tool-desc">Targeted search-and-replace. The old text must appear exactly once. Shows inline diff in terminal.</div>
+        <div class="tool-actions"><span class="tool-action">path</span><span class="tool-action">old_text</span><span class="tool-action">new_text</span></div>
+      </div>
+
+      <div class="tool-card t-cyan">
+        <div class="tool-tier" style="color:var(--cyan); background:rgba(34,211,238,0.1);">Core</div>
+        <div class="tool-name">search_files</div>
+        <div class="tool-desc">Regex search across the codebase. Returns matching lines with file paths and line numbers.</div>
+        <div class="tool-actions"><span class="tool-action">pattern</span><span class="tool-action">path</span><span class="tool-action">file_ext</span></div>
+      </div>
+
+      <div class="tool-card t-cyan">
+        <div class="tool-tier" style="color:var(--cyan); background:rgba(34,211,238,0.1);">Core</div>
+        <div class="tool-name">list_directory</div>
+        <div class="tool-desc">List files and folders, skipping hidden and build directories.</div>
+        <div class="tool-actions"><span class="tool-action">path</span></div>
+      </div>
+
+      <div class="tool-card t-cyan">
+        <div class="tool-tier" style="color:var(--cyan); background:rgba(34,211,238,0.1);">Core</div>
+        <div class="tool-name">run_command</div>
+        <div class="tool-desc">Execute a shell or PowerShell command. Blocks dangerous commands. 120s timeout.</div>
+        <div class="tool-actions"><span class="tool-action">command</span><span class="tool-action">cwd</span></div>
+      </div>
+
+      <!-- Git Tools -->
+      <div class="tool-card t-green">
+        <div class="tool-tier" style="color:var(--green); background:rgba(52,211,153,0.1);">Git</div>
+        <div class="tool-name">git_init</div>
+        <div class="tool-desc">Initialize a git repo with .gitignore, platform config, and initial commit.</div>
+      </div>
+
+      <div class="tool-card t-green">
+        <div class="tool-tier" style="color:var(--green); background:rgba(52,211,153,0.1);">Git</div>
+        <div class="tool-name">git_commit</div>
+        <div class="tool-desc">Stage all changes and commit with the given message.</div>
+        <div class="tool-actions"><span class="tool-action">message</span></div>
+      </div>
+
+      <div class="tool-card t-green">
+        <div class="tool-tier" style="color:var(--green); background:rgba(52,211,153,0.1);">Git</div>
+        <div class="tool-name">git_diff</div>
+        <div class="tool-desc">Show all uncommitted changes (staged + unstaged) as a unified diff.</div>
+      </div>
+
+      <div class="tool-card t-green">
+        <div class="tool-tier" style="color:var(--green); background:rgba(52,211,153,0.1);">Git</div>
+        <div class="tool-name">git_undo</div>
+        <div class="tool-desc">Revert the last commit, keeping changes in working directory.</div>
+      </div>
+
+      <div class="tool-card t-green">
+        <div class="tool-tier" style="color:var(--green); background:rgba(52,211,153,0.1);">Git</div>
+        <div class="tool-name">git_log</div>
+        <div class="tool-desc">Show the last N commits with hash, message, and timestamp.</div>
+        <div class="tool-actions"><span class="tool-action">n</span></div>
+      </div>
+
+      <!-- Context Tools -->
+      <div class="tool-card t-purple">
+        <div class="tool-tier" style="color:var(--accent); background:rgba(168,85,247,0.1);">Context</div>
+        <div class="tool-name">codebase_index</div>
+        <div class="tool-desc">Get AST-structured summary of all classes, methods, and imports in the project.</div>
+      </div>
+
+      <div class="tool-card t-purple">
+        <div class="tool-tier" style="color:var(--accent); background:rgba(168,85,247,0.1);">Context</div>
+        <div class="tool-name">static_config</div>
+        <div class="tool-desc">Get known-good build configs (pom.xml, package.json, Cargo.toml, etc.) for 8 languages.</div>
+        <div class="tool-actions"><span class="tool-action">language</span><span class="tool-action">project_name</span></div>
+      </div>
+
+      <div class="tool-card t-purple">
+        <div class="tool-tier" style="color:var(--accent); background:rgba(168,85,247,0.1);">Context</div>
+        <div class="tool-name">platform_info</div>
+        <div class="tool-desc">Get current OS, shell type, and PowerShell command reference table.</div>
+      </div>
+
+      <!-- Tier 1: System -->
+      <div class="tool-card t-amber">
+        <div class="tool-tier" style="color:var(--amber); background:rgba(251,191,36,0.1);">System</div>
+        <div class="tool-name">package_manager</div>
+        <div class="tool-desc">Universal package management. Auto-detects winget, choco, brew, apt, pip, npm, cargo, and 5 more.</div>
+        <div class="tool-actions"><span class="tool-action">install</span><span class="tool-action">uninstall</span><span class="tool-action">search</span><span class="tool-action">list</span><span class="tool-action">update</span><span class="tool-action">info</span></div>
+      </div>
+
+      <div class="tool-card t-amber">
+        <div class="tool-tier" style="color:var(--amber); background:rgba(251,191,36,0.1);">System</div>
+        <div class="tool-name">dotnet_cli</div>
+        <div class="tool-desc">.NET/C# project lifecycle. Create, build, test, run, manage NuGet packages.</div>
+        <div class="tool-actions"><span class="tool-action">new</span><span class="tool-action">build</span><span class="tool-action">test</span><span class="tool-action">run</span><span class="tool-action">publish</span><span class="tool-action">add-package</span></div>
+      </div>
+
+      <div class="tool-card t-amber">
+        <div class="tool-tier" style="color:var(--amber); background:rgba(251,191,36,0.1);">System</div>
+        <div class="tool-name">env_manager</div>
+        <div class="tool-desc">Environment variable management. Load .env files, manage PATH, get/set/unset variables.</div>
+        <div class="tool-actions"><span class="tool-action">get</span><span class="tool-action">set</span><span class="tool-action">list</span><span class="tool-action">load-env</span><span class="tool-action">save-env</span><span class="tool-action">path-add</span></div>
+      </div>
+
+      <div class="tool-card t-amber">
+        <div class="tool-tier" style="color:var(--amber); background:rgba(251,191,36,0.1);">System</div>
+        <div class="tool-name">process_manager</div>
+        <div class="tool-desc">Find running processes, check port usage, kill by PID. Cross-platform (PowerShell / ps).</div>
+        <div class="tool-actions"><span class="tool-action">list</span><span class="tool-action">find</span><span class="tool-action">kill</span><span class="tool-action">ports</span><span class="tool-action">port-find</span><span class="tool-action">tree</span></div>
+      </div>
+
+      <div class="tool-card t-amber">
+        <div class="tool-tier" style="color:var(--amber); background:rgba(251,191,36,0.1);">System</div>
+        <div class="tool-name">system_info</div>
+        <div class="tool-desc">System diagnostics. OS, CPU, memory, disk, network, and 20+ SDK version checks.</div>
+        <div class="tool-actions"><span class="tool-action">overview</span><span class="tool-action">os</span><span class="tool-action">cpu</span><span class="tool-action">memory</span><span class="tool-action">disk</span><span class="tool-action">sdks</span></div>
+      </div>
+
+      <!-- Tier 2: Cloud & Integration -->
+      <div class="tool-card t-rose">
+        <div class="tool-tier" style="color:var(--rose); background:rgba(251,113,133,0.1);">Pro</div>
+        <div class="tool-name">docker_tool</div>
+        <div class="tool-desc">Full Docker and Compose lifecycle. Build, run, stop, logs, compose up/down, prune.</div>
+        <div class="tool-actions"><span class="tool-action">run</span><span class="tool-action">build</span><span class="tool-action">compose-up</span><span class="tool-action">compose-down</span><span class="tool-action">logs</span><span class="tool-action">prune</span></div>
+      </div>
+
+      <div class="tool-card t-rose">
+        <div class="tool-tier" style="color:var(--rose); background:rgba(251,113,133,0.1);">Pro</div>
+        <div class="tool-name">service_manager</div>
+        <div class="tool-desc">System service management. Works with systemd (Linux), PowerShell (Windows), launchctl (macOS).</div>
+        <div class="tool-actions"><span class="tool-action">start</span><span class="tool-action">stop</span><span class="tool-action">restart</span><span class="tool-action">enable</span><span class="tool-action">status</span><span class="tool-action">logs</span></div>
+      </div>
+
+      <div class="tool-card t-rose">
+        <div class="tool-tier" style="color:var(--rose); background:rgba(251,113,133,0.1);">Pro</div>
+        <div class="tool-name">http_request</div>
+        <div class="tool-desc">HTTP API client. Supports JSON bodies, bearer auth, custom headers, query params.</div>
+        <div class="tool-actions"><span class="tool-action">GET</span><span class="tool-action">POST</span><span class="tool-action">PUT</span><span class="tool-action">PATCH</span><span class="tool-action">DELETE</span></div>
+      </div>
+
+      <div class="tool-card t-rose">
+        <div class="tool-tier" style="color:var(--rose); background:rgba(251,113,133,0.1);">Pro</div>
+        <div class="tool-name">msbuild_tool</div>
+        <div class="tool-desc">Visual Studio solution management. Build .sln/.csproj, manage project references.</div>
+        <div class="tool-actions"><span class="tool-action">build</span><span class="tool-action">sln-add</span><span class="tool-action">sln-remove</span><span class="tool-action">proj-add-ref</span><span class="tool-action">find-solutions</span></div>
+      </div>
+
+      <div class="tool-card t-rose">
+        <div class="tool-tier" style="color:var(--rose); background:rgba(251,113,133,0.1);">Pro</div>
+        <div class="tool-name">schedule_task</div>
+        <div class="tool-desc">Scheduled tasks. Cron jobs on Unix, Task Scheduler on Windows. Create, delete, enable/disable.</div>
+        <div class="tool-actions"><span class="tool-action">create</span><span class="tool-action">delete</span><span class="tool-action">enable</span><span class="tool-action">disable</span><span class="tool-action">list</span><span class="tool-action">run</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ DATA FLOW ════════════════════ -->
+  <section class="section">
+    <div class="section-label">Data Flow</div>
+    <div class="section-title">How a Request is Processed</div>
+    <div class="section-desc">A complete trace of what happens when the user types a message like "refactor this function".</div>
+
+    <div class="dataflow">
+      <div class="flow-steps">
+        <div class="df-step">
+          <div class="df-dot" style="color:var(--accent); border-color:rgba(168,85,247,0.4); background:rgba(168,85,247,0.1);">1</div>
+          <div class="df-content">
+            <div class="df-title">User Input</div>
+            <div class="df-desc"><span class="df-code">InputManager.get_input()</span> captures the message with readline history and autocomplete. If it starts with <span class="df-code">/</span>, it's routed to the slash command handler instead.</div>
+          </div>
+        </div>
+
+        <div class="df-step">
+          <div class="df-dot" style="color:var(--cyan); border-color:rgba(34,211,238,0.4); background:rgba(34,211,238,0.1);">2</div>
+          <div class="df-content">
+            <div class="df-title">Context Assembly</div>
+            <div class="df-desc"><span class="df-code">Agent.chat()</span> appends the message to conversation history. <span class="df-code">_build_system_prompt()</span> combines: role definition + tool selection guide + platform instructions (PowerShell on Windows) + workspace rules (PYOZ.md) + AST codebase summary.</div>
+          </div>
+        </div>
+
+        <div class="df-step">
+          <div class="df-dot" style="color:var(--blue); border-color:rgba(96,165,250,0.4); background:rgba(96,165,250,0.1);">3</div>
+          <div class="df-content">
+            <div class="df-title">LLM API Call</div>
+            <div class="df-desc"><span class="df-code">Provider.chat(messages, tools, system_prompt)</span> sends the request to Claude, OpenAI, or Ollama. Tool definitions are converted to the provider's native format. Returns an <span class="df-code">LLMResponse</span> with text and/or tool_calls.</div>
+          </div>
+        </div>
+
+        <div class="df-step">
+          <div class="df-dot" style="color:var(--amber); border-color:rgba(251,191,36,0.4); background:rgba(251,191,36,0.1);">4</div>
+          <div class="df-content">
+            <div class="df-title">Tool Execution Loop</div>
+            <div class="df-desc">If the LLM returned tool_calls, <span class="df-code">_execute_tool()</span> dispatches each one to its implementation. Results are formatted per provider spec and appended to messages. The LLM is called again. This repeats up to <strong>50 tool calls per turn</strong>.</div>
+          </div>
+        </div>
+
+        <div class="df-step">
+          <div class="df-dot" style="color:var(--orange); border-color:rgba(251,146,60,0.4); background:rgba(251,146,60,0.1);">5</div>
+          <div class="df-content">
+            <div class="df-title">Side Effects</div>
+            <div class="df-desc">File writes and edits trigger <span class="df-code">auto_commit()</span> (git) and <span class="df-code">reindex_file()</span> (AST). The <span class="df-code">on_tool_call</span> callback displays each tool execution in the terminal with icons and formatted output.</div>
+          </div>
+        </div>
+
+        <div class="df-step">
+          <div class="df-dot" style="color:var(--green); border-color:rgba(52,211,153,0.4); background:rgba(52,211,153,0.1);">6</div>
+          <div class="df-content">
+            <div class="df-title">Response &amp; Persist</div>
+            <div class="df-desc">The final text response is rendered as markdown via Rich. Token counts and cost are displayed. <span class="df-code">SessionManager.save()</span> persists the full conversation to <span class="df-code">~/.pyoz/sessions/</span> so work is never lost.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ DESIGN PATTERNS ════════════════════ -->
+  <section class="section">
+    <div class="section-label">Design</div>
+    <div class="section-title">Architecture Patterns</div>
+    <div class="section-desc">The key design decisions that keep the codebase maintainable and extensible.</div>
+
+    <div class="patterns-grid">
+      <div class="pattern-card">
+        <div class="pattern-name">Strategy Pattern</div>
+        <div class="pattern-where">pyoz/providers/base.py</div>
+        <div class="pattern-why">Three LLM providers implement the same BaseLLMProvider interface. The agent works identically regardless of which provider is active. Swapping from Claude to Ollama changes zero agent code.</div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-name">Dispatcher Pattern</div>
+        <div class="pattern-where">Agent._execute_tool()</div>
+        <div class="pattern-why">A single method routes all 24 tool calls to their implementations by name. Adding a new tool requires: one function, one registry entry, one elif branch.</div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-name">Registry Pattern</div>
+        <div class="pattern-where">pyoz/tools/registry.py</div>
+        <div class="pattern-why">Tool schemas are defined once in a central list. Conversion to Claude or OpenAI format happens automatically. No schema duplication across providers.</div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-name">Factory Pattern</div>
+        <div class="pattern-where">cli._create_provider()</div>
+        <div class="pattern-why">A single factory function creates the right provider from CLI args. Encapsulates API key validation, model defaults, and import logic per provider.</div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-name">Observer Pattern</div>
+        <div class="pattern-where">Agent callbacks</div>
+        <div class="pattern-why">The agent emits events via callbacks (on_tool_call, on_diff, on_stream_token). The CLI subscribes to display them. The agent has zero knowledge of Rich or the terminal.</div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-name">Platform Abstraction</div>
+        <div class="pattern-where">pyoz/platform.py</div>
+        <div class="pattern-why">All platform-specific logic is isolated in one module. Tools import IS_WINDOWS and adapt behavior. The LLM's system prompt automatically switches to PowerShell mode on Windows.</div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-name">Context Window Mgmt</div>
+        <div class="pattern-where">Agent._manage_context()</div>
+        <div class="pattern-why">Old messages are summarized to a single prefix when the conversation grows long. Prevents context overflow while preserving essential history. Transparent to the user.</div>
+      </div>
+
+      <div class="pattern-card">
+        <div class="pattern-name">Auto-Commit Guard</div>
+        <div class="pattern-where">Agent._execute_tool()</div>
+        <div class="pattern-why">Every file write/edit auto-commits to git. This creates an undo stack (/undo reverts the last commit) and makes all agent actions auditable through git log.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ FILE STRUCTURE ════════════════════ -->
+  <section class="section">
+    <div class="section-label">Project</div>
+    <div class="section-title">File Structure</div>
+    <div class="section-desc">Every file in the project and its role.</div>
+
+    <div class="file-tree">
+<span class="dir">pyoz/</span>
+<span class="indent"><span class="hl">cli.py</span>            <span class="note">&#8594; Entry point, REPL loop, slash commands</span></span>
+<span class="indent"><span class="hl">agent.py</span>          <span class="note">&#8594; Agentic loop, tool dispatch, system prompt</span></span>
+<span class="indent"><span class="hl">platform.py</span>       <span class="note">&#8594; OS detection, PowerShell bridge, blocked patterns</span></span>
+<span class="indent"><span class="file">session.py</span>        <span class="note">&#8594; Conversation persistence to ~/.pyoz/sessions/</span></span>
+<span class="indent"><span class="file">workspace.py</span>      <span class="note">&#8594; Multi-project workspace switching</span></span>
+<span class="indent"></span>
+<span class="indent"><span class="dir">providers/</span></span>
+<span class="indent2"><span class="file">base.py</span>          <span class="note">&#8594; Abstract LLM interface: ToolCall, LLMResponse</span></span>
+<span class="indent2"><span class="file">claude_provider.py</span> <span class="note">&#8594; Anthropic API (Claude)</span></span>
+<span class="indent2"><span class="file">openai_provider.py</span> <span class="note">&#8594; OpenAI API (GPT-4o)</span></span>
+<span class="indent2"><span class="file">ollama_provider.py</span> <span class="note">&#8594; Local Ollama (Qwen, Llama, etc.)</span></span>
+<span class="indent"></span>
+<span class="indent"><span class="dir">tools/</span></span>
+<span class="indent2"><span class="hl">registry.py</span>      <span class="note">&#8594; 24 tool schemas for Claude &amp; OpenAI format</span></span>
+<span class="indent2"><span class="file">file_tools.py</span>    <span class="note">&#8594; read, write, edit, search, list_directory</span></span>
+<span class="indent2"><span class="file">command_tools.py</span> <span class="note">&#8594; Shell/PowerShell execution + command blocking</span></span>
+<span class="indent2"><span class="file">git_tools.py</span>     <span class="note">&#8594; init, commit, diff, undo, log, auto-commit</span></span>
+<span class="indent2"><span class="file">context_tools.py</span> <span class="note">&#8594; static_config, platform_info, codebase_index</span></span>
+<span class="indent2"><span class="file">package_tools.py</span> <span class="note">&#8594; Universal package manager (12 backends)</span></span>
+<span class="indent2"><span class="file">dotnet_tools.py</span>  <span class="note">&#8594; .NET CLI (build, test, run, NuGet)</span></span>
+<span class="indent2"><span class="file">env_tools.py</span>     <span class="note">&#8594; Environment variables &amp; .env file loader</span></span>
+<span class="indent2"><span class="file">process_tools.py</span> <span class="note">&#8594; Process &amp; port management</span></span>
+<span class="indent2"><span class="file">system_tools.py</span>  <span class="note">&#8594; System diagnostics &amp; SDK detection</span></span>
+<span class="indent2"><span class="file">docker_tools.py</span>  <span class="note">&#8594; Docker &amp; Compose lifecycle (27 actions)</span></span>
+<span class="indent2"><span class="file">service_tools.py</span> <span class="note">&#8594; systemd / PowerShell / launchctl services</span></span>
+<span class="indent2"><span class="file">http_tools.py</span>    <span class="note">&#8594; HTTP client (GET/POST/PUT/DELETE + auth)</span></span>
+<span class="indent2"><span class="file">msbuild_tools.py</span> <span class="note">&#8594; Visual Studio .sln &amp; .csproj management</span></span>
+<span class="indent2"><span class="file">schedule_tools.py</span> <span class="note">&#8594; Cron (Unix) &amp; Task Scheduler (Windows)</span></span>
+<span class="indent"></span>
+<span class="indent"><span class="dir">indexer/</span></span>
+<span class="indent2"><span class="file">ast_indexer.py</span>   <span class="note">&#8594; Multi-language AST parsing &amp; symbol extraction</span></span>
+<span class="indent"></span>
+<span class="indent"><span class="dir">ui/</span></span>
+<span class="indent2"><span class="file">display.py</span>       <span class="note">&#8594; Rich console output (banner, diffs, tables)</span></span>
+<span class="indent2"><span class="file">theme.py</span>         <span class="note">&#8594; Colors, styles, and icon definitions</span></span>
+<span class="indent2"><span class="file">input.py</span>         <span class="note">&#8594; prompt_toolkit input with autocomplete</span></span>
+
+<span class="dir">tests/</span>
+<span class="indent"><span class="file">test_file_tools.py</span>   <span class="note">&#8594; File operation tests</span></span>
+<span class="indent"><span class="file">test_git_tools.py</span>    <span class="note">&#8594; Git integration tests</span></span>
+<span class="indent"><span class="file">test_registry.py</span>     <span class="note">&#8594; Tool schema validation</span></span>
+<span class="indent"><span class="file">test_platform.py</span>     <span class="note">&#8594; Cross-platform tests (36 tests)</span></span>
+<span class="indent"><span class="file">test_new_tools.py</span>    <span class="note">&#8594; Tier-1 tool tests (56 tests)</span></span>
+<span class="indent"><span class="file">test_tier2_tools.py</span>  <span class="note">&#8594; Tier-2 tool tests (60 tests)</span></span>
+<span class="indent"><span class="file">test_ui.py</span>           <span class="note">&#8594; UI component tests</span></span>
+<span class="indent"><span class="file">test_workspace.py</span>    <span class="note">&#8594; Workspace manager tests</span></span>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- ════════════════════ FOOTER ════════════════════ -->
+  <footer class="footer">
+    <p>PyOz Architecture &mdash; 24 tools &middot; 3 providers &middot; 3 platforms &middot; 312 tests</p>
+  </footer>
+
+</div>
+</body>
+</html>
