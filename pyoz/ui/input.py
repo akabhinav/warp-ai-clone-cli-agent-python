@@ -36,6 +36,7 @@ SLASH_COMMANDS = [
     ("/ws-add", "Add workspace"),
     ("/ws-remove", "Remove workspace"),
     ("/stream", "Toggle streaming output"),
+    ("/platform", "Show platform & shell info"),
 ]
 
 

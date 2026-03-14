@@ -13,12 +13,13 @@ from typing import Any, Callable
 
 from pyoz.providers.base import BaseLLMProvider, LLMResponse, StreamEvent, ToolCall
 from pyoz.session import SessionManager
+from pyoz.platform import IS_WINDOWS, HAS_POWERSHELL, PLATFORM_NAME, get_shell_info, get_command_reference
 from pyoz.tools.file_tools import read_file, write_file, edit_file, search_files, list_directory
 from pyoz.tools.command_tools import run_command
 from pyoz.tools.git_tools import (
     git_init, git_commit, auto_commit, git_diff, git_undo, git_log, is_git_repo,
 )
-from pyoz.tools.context_tools import static_config, codebase_index
+from pyoz.tools.context_tools import static_config, codebase_index, platform_info
 from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
 from pyoz.indexer.ast_indexer import ASTIndexer
 
@@ -40,6 +41,8 @@ def _load_rules(work_dir: str) -> str:
 
 def _build_system_prompt(rules: str, codebase_ctx: str) -> str:
     """Build the system prompt for the LLM."""
+    shell_info = get_shell_info()
+
     prompt = """You are PyOz, an expert coding agent. You help developers
 write code, debug issues, run commands, and build projects.
 
@@ -63,6 +66,58 @@ IMPORTANT BEHAVIORS:
    Use write_file only when creating new files or rewriting entirely.
 6. Before creating a project, briefly tell the user your plan.
    Don't ask for confirmation unless the request is ambiguous."""
+
+    # Platform-specific instructions
+    prompt += f"\n\nPLATFORM: {shell_info['platform']} (shell: {shell_info['name']})"
+
+    if IS_WINDOWS and HAS_POWERSHELL:
+        prompt += """
+
+WINDOWS + POWERSHELL MODE:
+You are running on Windows with PowerShell. ALWAYS use PowerShell commands
+instead of Unix/bash commands when running commands via run_command.
+
+Key PowerShell commands to use:
+- Navigation: Get-Location (pwd), Set-Location (cd), Get-ChildItem (ls/dir)
+- Files: Get-Content (cat), New-Item (touch/mkdir), Copy-Item (cp),
+  Move-Item (mv), Remove-Item (rm), Test-Path (test -f)
+- Search: Select-String (grep), Get-ChildItem -Recurse -Filter (find)
+- Text: (Get-Content file) -replace 'old','new' (sed)
+- Process: Get-Process (ps), Stop-Process (kill), Start-Process
+- Network: Invoke-WebRequest (curl/wget), Test-Connection (ping)
+- System: Get-Command (which), $env:VAR (env vars), Get-PSDrive (df)
+- Archives: Compress-Archive (zip), Expand-Archive (unzip)
+- Pipe: | Where-Object (filter), | ForEach-Object (map),
+  | Measure-Object (count/sum), | Sort-Object, | Select-Object
+
+PowerShell syntax rules:
+- Use semicolons (;) to chain commands, NOT && or ||
+- Variables use $: $var = "value"
+- Env vars: $env:PATH, $env:HOME
+- String interpolation: "Hello $name" or "Path: $($obj.Property)"
+- Comparison: -eq, -ne, -gt, -lt, -ge, -le (NOT ==, !=, >, <)
+- Logical: -and, -or, -not (NOT &&, ||, !)
+- Wildcards: Get-ChildItem *.java -Recurse
+- Pipeline: Get-Process | Where-Object { $_.CPU -gt 100 }
+- Error handling: try { } catch { $_.Exception.Message }
+
+NEVER use these Unix commands on Windows:
+- ls, cat, grep, find, rm, cp, mv, mkdir -p, touch, head, tail
+- chmod, chown, ln -s, tar, sed, awk, curl (use PowerShell equivalents)"""
+
+    elif IS_WINDOWS:
+        prompt += """
+
+WINDOWS + CMD MODE:
+You are running on Windows with Command Prompt (cmd.exe).
+Use Windows-native commands: dir, type, copy, move, del, mkdir, rmdir.
+Use backslashes for paths: C:\\Users\\name\\project"""
+
+    else:
+        prompt += f"""
+
+UNIX MODE ({shell_info['platform'].upper()}):
+You are running on {shell_info['platform']}. Use standard Unix/bash commands."""
 
     if rules:
         prompt += f"\n\nRULES:\n{rules}"
@@ -378,6 +433,9 @@ class Agent:
 
             elif name == "static_config":
                 return static_config(args["language"], args["project_name"])
+
+            elif name == "platform_info":
+                return platform_info()
 
             else:
                 return f"Error: Unknown tool '{name}'"

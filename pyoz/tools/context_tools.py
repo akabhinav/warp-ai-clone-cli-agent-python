@@ -1,6 +1,14 @@
-"""Context tools — codebase index and static configs."""
+"""Context tools — codebase index, static configs, and platform reference."""
 
 from typing import Any
+
+from pyoz.platform import (
+    IS_WINDOWS,
+    PLATFORM_NAME,
+    get_shell_info,
+    get_command_reference,
+    POWERSHELL_COMMAND_MAP,
+)
 
 
 # Static project configs for common languages
@@ -173,6 +181,38 @@ def static_config(language: str, project_name: str) -> str:
     content = config["content"].replace("{project_name}", project_name)
     filename = config["file"].replace("{project_name}", project_name)
     return f"# File: {filename}\n{content}"
+
+
+def platform_info() -> str:
+    """Return current platform and shell information with command reference."""
+    info = get_shell_info()
+    lines = [
+        f"Platform: {info['platform']}",
+        f"Shell: {info['name']} ({info['path']})",
+        "",
+    ]
+
+    if IS_WINDOWS:
+        lines.append("PowerShell Command Reference:")
+        lines.append("=" * 45)
+        # Group by category
+        categories = {
+            "Navigation & Files": ["pwd", "cd", "ls", "find", "touch", "mkdir", "cp", "mv", "rm", "rmdir", "cat", "head", "tail"],
+            "Search & Text": ["grep", "sed", "awk", "sort", "uniq", "diff", "wc"],
+            "System & Process": ["ps", "kill", "env", "export", "which", "whoami", "hostname"],
+            "Network": ["curl", "wget", "ping", "netstat", "ifconfig", "nslookup"],
+            "Archives": ["tar", "zip", "unzip"],
+            "Permissions & Info": ["chmod", "chown", "stat", "file", "du", "df"],
+        }
+        for cat_name, commands in categories.items():
+            lines.append(f"\n  {cat_name}:")
+            for cmd in commands:
+                if cmd in POWERSHELL_COMMAND_MAP:
+                    lines.append(f"    {cmd:<15} → {POWERSHELL_COMMAND_MAP[cmd]}")
+    else:
+        lines.append(f"Standard Unix shell commands available ({info['name']})")
+
+    return "\n".join(lines)
 
 
 def codebase_index(index_data: dict[str, Any] | None = None) -> str:

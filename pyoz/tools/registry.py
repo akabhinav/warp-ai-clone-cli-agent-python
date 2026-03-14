@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from pyoz.platform import IS_WINDOWS, HAS_POWERSHELL
+
 # Tool definitions in a format that can be converted to Claude/OpenAI tool schemas
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -66,11 +68,21 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "run_command",
-        "description": "Run a shell command and return stdout, stderr, and exit code. Timeout: 120 seconds. Some dangerous commands are blocked.",
+        "description": (
+            "Run a PowerShell command and return stdout, stderr, and exit code. "
+            "Use PowerShell cmdlets: Get-ChildItem (ls), Select-String (grep), "
+            "Get-Content (cat), New-Item (touch/mkdir), etc. Timeout: 120 seconds."
+            if IS_WINDOWS and HAS_POWERSHELL
+            else "Run a shell command and return stdout, stderr, and exit code. Timeout: 120 seconds. Some dangerous commands are blocked."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "Shell command to execute"},
+                "command": {"type": "string", "description": (
+                    "PowerShell command to execute (use PowerShell cmdlets, not Unix commands)"
+                    if IS_WINDOWS and HAS_POWERSHELL
+                    else "Shell command to execute"
+                )},
                 "cwd": {"type": "string", "description": "Working directory (default: current directory)"},
             },
             "required": ["command"],
@@ -144,6 +156,20 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "project_name": {"type": "string", "description": "Project name for the config file"},
             },
             "required": ["language", "project_name"],
+        },
+    },
+    {
+        "name": "platform_info",
+        "description": (
+            "Get current platform info, shell type, and PowerShell command reference. "
+            "Use this to look up the correct PowerShell equivalent for Unix commands."
+            if IS_WINDOWS
+            else "Get current platform and shell information."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
 ]

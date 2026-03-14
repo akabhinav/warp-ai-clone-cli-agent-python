@@ -1,16 +1,26 @@
-"""File tools — read, write, edit, search, list."""
+"""File tools — read, write, edit, search, list.
+
+Cross-platform: works on Windows, macOS, and Linux.
+Uses Python's os module for all operations (no shell commands).
+"""
 
 import os
 import re
 from typing import Any
 
+from pyoz.platform import IS_WINDOWS, normalize_path
+
 
 SKIP_DIRS = {".git", "node_modules", "target", "build", "venv", "__pycache__", ".venv", "dist", ".tox", ".mypy_cache"}
+
+# Windows-specific skip dirs
+if IS_WINDOWS:
+    SKIP_DIRS.update({"$RECYCLE.BIN", "System Volume Information", ".vs", "bin", "obj", "packages"})
 
 
 def read_file(path: str) -> str:
     """Read and return file content."""
-    path = os.path.abspath(path)
+    path = os.path.abspath(normalize_path(path))
     if not os.path.isfile(path):
         raise FileNotFoundError(f"File not found: {path}")
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -19,9 +29,9 @@ def read_file(path: str) -> str:
 
 def write_file(path: str, content: str) -> str:
     """Write content to file, creating parent dirs as needed."""
-    path = os.path.abspath(path)
+    path = os.path.abspath(normalize_path(path))
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(content)
     size = len(content.encode("utf-8"))
     return f"wrote {size} bytes to {path}"
@@ -29,7 +39,7 @@ def write_file(path: str, content: str) -> str:
 
 def edit_file(path: str, old_text: str, new_text: str) -> str:
     """Search/replace in file. old_text must appear exactly once."""
-    path = os.path.abspath(path)
+    path = os.path.abspath(normalize_path(path))
     if not os.path.isfile(path):
         raise FileNotFoundError(f"File not found: {path}")
     with open(path, "r", encoding="utf-8") as f:
@@ -40,14 +50,14 @@ def edit_file(path: str, old_text: str, new_text: str) -> str:
     if count > 1:
         raise ValueError(f"old_text found {count} times in {path} — must appear exactly once")
     new_content = content.replace(old_text, new_text, 1)
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(new_content)
     return f"edited {path}: replaced {len(old_text)} chars with {len(new_text)} chars"
 
 
 def search_files(pattern: str, path: str | None = None, file_ext: str | None = None) -> list[dict[str, Any]]:
     """Regex search across codebase files."""
-    search_path = os.path.abspath(path) if path else os.getcwd()
+    search_path = os.path.abspath(normalize_path(path)) if path else os.getcwd()
     results = []
     try:
         regex = re.compile(pattern)
@@ -76,7 +86,7 @@ def search_files(pattern: str, path: str | None = None, file_ext: str | None = N
 
 def list_directory(path: str | None = None) -> list[dict[str, Any]]:
     """List files and folders, skipping hidden/build dirs."""
-    dir_path = os.path.abspath(path) if path else os.getcwd()
+    dir_path = os.path.abspath(normalize_path(path)) if path else os.getcwd()
     if not os.path.isdir(dir_path):
         raise FileNotFoundError(f"Directory not found: {dir_path}")
     entries = []

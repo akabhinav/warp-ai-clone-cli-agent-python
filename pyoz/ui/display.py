@@ -14,6 +14,7 @@ from rich.columns import Columns
 from rich.rule import Rule
 
 from pyoz.ui.theme import PYOZ_THEME, ICONS
+from pyoz.platform import IS_WINDOWS, HAS_POWERSHELL, PLATFORM_NAME, get_shell_info
 
 # Global console with theme
 console = Console(theme=PYOZ_THEME, highlight=False)
@@ -27,6 +28,15 @@ def print_banner(info: dict[str, Any], session_resumed: bool = False) -> None:
     lines.append(f"  [pyoz.success]{ICONS['check']}[/] AST Indexer ready")
     lines.append(f"  [pyoz.success]{ICONS['check']}[/] Codebase: [pyoz.stat.value]{info['files_indexed']}[/] files, [pyoz.stat.value]{info['symbols']}[/] symbols")
     lines.append(f"  [pyoz.success]{ICONS['check']}[/] Git: {info['git']}")
+
+    # Platform info
+    shell_info = get_shell_info()
+    platform_str = shell_info['platform'].capitalize()
+    shell_str = shell_info['name']
+    if IS_WINDOWS and HAS_POWERSHELL:
+        lines.append(f"  [pyoz.success]{ICONS['check']}[/] Platform: {platform_str} + [bold magenta]PowerShell[/]")
+    else:
+        lines.append(f"  [pyoz.success]{ICONS['check']}[/] Platform: {platform_str} ({shell_str})")
 
     if info.get("rules"):
         lines.append(f"  [pyoz.success]{ICONS['check']}[/] Rules: loaded from PYOZ.md")
@@ -265,6 +275,7 @@ def print_help() -> None:
         ("Settings", [
             ("/stream", "Toggle streaming output"),
             ("/stats", "Show token usage and cost"),
+            ("/platform", "Show platform & shell info" + (" + PowerShell reference" if IS_WINDOWS else "")),
         ]),
         ("General", [
             ("/help", "Show this help"),
@@ -281,6 +292,43 @@ def print_help() -> None:
 
         console.print(f"\n  [bold]{section_name}[/]")
         console.print(table)
+    console.print()
+
+
+def print_platform_info() -> None:
+    """Display platform and shell information with PowerShell reference on Windows."""
+    shell_info = get_shell_info()
+
+    lines = [
+        f"  [pyoz.stat.label]Platform:[/] [pyoz.stat.value]{shell_info['platform'].capitalize()}[/]",
+        f"  [pyoz.stat.label]Shell:[/]    [pyoz.stat.value]{shell_info['name']}[/]",
+        f"  [pyoz.stat.label]Path:[/]     [pyoz.subtle]{shell_info['path']}[/]",
+    ]
+    console.print("\n".join(lines))
+
+    if IS_WINDOWS and HAS_POWERSHELL:
+        console.print()
+        console.print("  [bold]PowerShell Quick Reference:[/]")
+
+        from pyoz.platform import POWERSHELL_COMMAND_MAP
+
+        categories = {
+            "Navigation & Files": ["pwd", "cd", "ls", "find", "cat", "head", "tail", "cp", "mv", "rm", "mkdir", "touch"],
+            "Search & Text": ["grep", "sed", "sort", "diff", "wc"],
+            "System": ["ps", "kill", "which", "env", "whoami"],
+            "Network": ["curl", "wget", "ping"],
+        }
+
+        for cat_name, commands in categories.items():
+            table = Table(show_header=False, box=None, padding=(0, 1), pad_edge=False)
+            table.add_column("Unix", style="pyoz.subtle", min_width=12)
+            table.add_column("Arrow", style="pyoz.tool.arrow", width=3)
+            table.add_column("PowerShell", style="pyoz.accent")
+            for cmd in commands:
+                if cmd in POWERSHELL_COMMAND_MAP:
+                    table.add_row(cmd, "→", POWERSHELL_COMMAND_MAP[cmd])
+            console.print(f"\n  [bold]{cat_name}:[/]")
+            console.print(table)
     console.print()
 
 

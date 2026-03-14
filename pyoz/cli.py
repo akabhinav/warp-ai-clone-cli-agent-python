@@ -33,6 +33,7 @@ from pyoz.ui.display import (
     print_diff_output,
     print_rules,
     print_help,
+    print_platform_info,
 )
 from pyoz.ui.input import InputManager
 
@@ -227,6 +228,10 @@ def _handle_slash_command(command: str, agent: Agent, workspace_mgr: WorkspaceMa
         agent.streaming = not agent.streaming
         state = "on" if agent.streaming else "off"
         print_success(f"Streaming: {state}")
+        return True
+
+    elif cmd == "/platform":
+        print_platform_info()
         return True
 
     elif cmd == "/help":
@@ -473,9 +478,9 @@ def standalone_func(x: int) -> int:
 
     # Test tool registry
     from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
-    assert len(get_tool_definitions_claude()) == 13
-    assert len(get_tool_definitions_openai()) == 13
-    _pass("tool registry (13 tools)")
+    assert len(get_tool_definitions_claude()) == 14
+    assert len(get_tool_definitions_openai()) == 14
+    _pass("tool registry (14 tools)")
 
     # Test workspace manager
     with tempfile.TemporaryDirectory() as tmpdir:

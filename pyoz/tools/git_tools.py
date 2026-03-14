@@ -1,8 +1,14 @@
-"""Git tools — init, commit, diff, undo, log."""
+"""Git tools — init, commit, diff, undo, log.
+
+Cross-platform: uses git CLI directly (works on Windows/macOS/Linux).
+"""
 
 import os
+import shutil
 import subprocess
 from typing import Any
+
+from pyoz.platform import IS_WINDOWS
 
 DEFAULT_GITIGNORE = """# PyOz defaults
 __pycache__/
@@ -24,12 +30,49 @@ Thumbs.db
 .env
 """
 
+# Windows-specific gitignore additions
+WINDOWS_GITIGNORE_EXTRA = """
+# Windows
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+packages/
+*.nupkg
+$RECYCLE.BIN/
+Desktop.ini
+"""
+
+
+def _find_git() -> str:
+    """Find git executable."""
+    git = shutil.which("git")
+    if git:
+        return git
+    # Common Windows locations
+    if IS_WINDOWS:
+        common_paths = [
+            r"C:\Program Files\Git\bin\git.exe",
+            r"C:\Program Files (x86)\Git\bin\git.exe",
+        ]
+        for p in common_paths:
+            if os.path.isfile(p):
+                return p
+    return "git"  # Hope it's on PATH
+
+
+GIT_EXECUTABLE = _find_git()
+
 
 def _git(args: list[str], cwd: str | None = None) -> tuple[str, str, int]:
     """Run a git command and return (stdout, stderr, returncode)."""
     work_dir = cwd or os.getcwd()
     result = subprocess.run(
-        ["git"] + args,
+        [GIT_EXECUTABLE] + args,
         capture_output=True,
         text=True,
         cwd=work_dir,
@@ -43,11 +86,22 @@ def git_init(cwd: str | None = None) -> str:
     _git(["init"], work_dir)
     _git(["config", "user.email", "pyoz@agent"], work_dir)
     _git(["config", "user.name", "PyOz"], work_dir)
+
+    # Create .gitignore
     gitignore_path = os.path.join(work_dir, ".gitignore")
     if not os.path.exists(gitignore_path):
-        with open(gitignore_path, "w") as f:
-            f.write(DEFAULT_GITIGNORE)
+        content = DEFAULT_GITIGNORE
+        if IS_WINDOWS:
+            content += WINDOWS_GITIGNORE_EXTRA
+        with open(gitignore_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
     _git(["config", "commit.gpgsign", "false"], work_dir)
+
+    # On Windows, handle autocrlf to avoid line ending issues
+    if IS_WINDOWS:
+        _git(["config", "core.autocrlf", "true"], work_dir)
+
     _git(["add", "."], work_dir)
     _git(["commit", "-m", "pyoz: initial commit"], work_dir)
     return "initialized git repo"
