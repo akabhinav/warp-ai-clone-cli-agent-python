@@ -1,0 +1,300 @@
+# ============================================================================
+# PyOz Enterprise Sandbox — Docker Compose
+#
+# Usage:
+#   Lightweight:  docker compose up -d agent postgres redis
+#   Standard:     docker compose up -d agent postgres redis mongodb mysql kafka
+#   Full:         docker compose --profile full up -d
+#
+#   Enter agent:  docker exec -it pyoz-agent pyoz
+#   Stop all:     docker compose --profile full down
+# ============================================================================
+
+x-common: &common
+  restart: unless-stopped
+  networks:
+    - pyoz-net
+
+services:
+  # ── PyOz Agent ─────────────────────────────────────────────
+  agent:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: sandbox/Dockerfile
+    container_name: pyoz-agent
+    hostname: pyoz-agent
+    stdin_open: true
+    tty: true
+    volumes:
+      - workspace:/workspace
+      - pyoz-data:/root/.pyoz
+      # Mount host Docker socket (optional, for Docker-in-Docker)
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # LLM API Keys (from .env file)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+      # PostgreSQL
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-pyoz}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pyoz_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-app_db}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-pyoz}:${POSTGRES_PASSWORD:-pyoz_secret}@postgres:5432/${POSTGRES_DB:-app_db}
+
+      # MySQL
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-pyoz}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-pyoz_secret}
+      - MYSQL_DATABASE=${MYSQL_DB:-app_db}
+
+      # MongoDB
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USER=${MONGO_USER:-pyoz}
+      - MONGO_PASSWORD=${MONGO_PASSWORD:-pyoz_secret}
+      - MONGO_DB=${MONGO_DB:-app_db}
+      - MONGO_URL=mongodb://${MONGO_USER:-pyoz}:${MONGO_PASSWORD:-pyoz_secret}@mongodb:27017/${MONGO_DB:-app_db}?authSource=admin
+
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_URL=redis://redis:6379
+
+      # Kafka
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+
+      # RabbitMQ
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-pyoz}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-pyoz_secret}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-pyoz}:${RABBITMQ_PASSWORD:-pyoz_secret}@rabbitmq:5672
+
+      # Elasticsearch
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+
+      # MinIO (S3-compatible)
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-pyoz}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-pyoz_secret_key}
+
+      # Sandbox mode flag
+      - PYOZ_SANDBOX=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── PostgreSQL 16 ──────────────────────────────────────────
+  postgres:
+    <<: *common
+    image: postgres:16-alpine
+    container_name: pyoz-postgres
+    ports:
+      - "${POSTGRES_EXTERNAL_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pyoz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pyoz_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pyoz}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── MySQL 8 ────────────────────────────────────────────────
+  mysql:
+    <<: *common
+    image: mysql:8.0
+    container_name: pyoz-mysql
+    ports:
+      - "${MYSQL_EXTERNAL_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_secret}
+      MYSQL_USER: ${MYSQL_USER:-pyoz}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pyoz_secret}
+      MYSQL_DATABASE: ${MYSQL_DB:-app_db}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_secret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MongoDB 7 ──────────────────────────────────────────────
+  mongodb:
+    <<: *common
+    image: mongo:7
+    container_name: pyoz-mongodb
+    ports:
+      - "${MONGO_EXTERNAL_PORT:-27017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-pyoz}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-pyoz_secret}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-app_db}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis 7 ────────────────────────────────────────────────
+  redis:
+    <<: *common
+    image: redis:7-alpine
+    container_name: pyoz-redis
+    ports:
+      - "${REDIS_EXTERNAL_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Kafka (KRaft mode — no Zookeeper) ─────────────────────
+  kafka:
+    <<: *common
+    image: apache/kafka:3.7.1
+    container_name: pyoz-kafka
+    ports:
+      - "${KAFKA_EXTERNAL_PORT:-9092}:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: "pyoz-sandbox-kafka-cluster-01"
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── RabbitMQ (with Management UI) ─────────────────────────
+  rabbitmq:
+    <<: *common
+    image: rabbitmq:3-management-alpine
+    container_name: pyoz-rabbitmq
+    profiles: ["full"]
+    ports:
+      - "${RABBITMQ_EXTERNAL_PORT:-5672}:5672"
+      - "15672:15672"   # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-pyoz}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-pyoz_secret}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running", "-q"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Elasticsearch 8 ───────────────────────────────────────
+  elasticsearch:
+    <<: *common
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: pyoz-elasticsearch
+    profiles: ["full"]
+    ports:
+      - "${ES_EXTERNAL_PORT:-9200}:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── MinIO (S3-compatible Object Storage) ──────────────────
+  minio:
+    <<: *common
+    image: minio/minio:latest
+    container_name: pyoz-minio
+    profiles: ["full"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"   # Console UI
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-pyoz}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-pyoz_secret_key}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Nginx (Reverse Proxy) ─────────────────────────────────
+  nginx:
+    <<: *common
+    image: nginx:alpine
+    container_name: pyoz-nginx
+    profiles: ["full"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - workspace:/workspace:ro
+
+# ── Networks ─────────────────────────────────────────────────
+networks:
+  pyoz-net:
+    name: pyoz-network
+    driver: bridge
+
+# ── Volumes ──────────────────────────────────────────────────
+volumes:
+  workspace:
+    name: pyoz-workspace
+  pyoz-data:
+    name: pyoz-agent-data
+  pg-data:
+    name: pyoz-postgres-data
+  mysql-data:
+    name: pyoz-mysql-data
+  mongo-data:
+    name: pyoz-mongo-data
+  redis-data:
+    name: pyoz-redis-data
+  kafka-data:
+    name: pyoz-kafka-data
+  rabbitmq-data:
+    name: pyoz-rabbitmq-data
+  es-data:
+    name: pyoz-elasticsearch-data
+  minio-data:
+    name: pyoz-minio-data

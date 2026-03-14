@@ -36,6 +36,145 @@ def _version(cmd: list[str]) -> str:
     return out.splitlines()[0].strip() if out else ""
 
 
+def _is_sandbox() -> bool:
+    """Check if running inside the PyOz Docker sandbox."""
+    return os.environ.get("PYOZ_SANDBOX") == "1"
+
+
+def _tcp_check(host: str, port: int, timeout: int = 3) -> bool:
+    """Check if a TCP port is reachable (works inside Docker networks)."""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, ConnectionRefusedError, TimeoutError):
+        return False
+
+
+def _detect_sandbox_services() -> dict[str, Any]:
+    """Detect services available in the Docker sandbox via env vars and TCP checks."""
+    services: dict[str, Any] = {}
+
+    # PostgreSQL
+    pg_host = os.environ.get("POSTGRES_HOST", "")
+    if pg_host:
+        port = int(os.environ.get("POSTGRES_PORT", 5432))
+        services["postgres"] = {
+            "name": "PostgreSQL",
+            "engine_key": "postgres",
+            "host": pg_host,
+            "port": port,
+            "user": os.environ.get("POSTGRES_USER", "pyoz"),
+            "password": os.environ.get("POSTGRES_PASSWORD", ""),
+            "database": os.environ.get("POSTGRES_DB", "app_db"),
+            "connection_string": os.environ.get("DATABASE_URL", ""),
+            "running": _tcp_check(pg_host, port),
+        }
+
+    # MySQL
+    mysql_host = os.environ.get("MYSQL_HOST", "")
+    if mysql_host:
+        port = int(os.environ.get("MYSQL_PORT", 3306))
+        services["mysql"] = {
+            "name": "MySQL",
+            "engine_key": "mysql",
+            "host": mysql_host,
+            "port": port,
+            "user": os.environ.get("MYSQL_USER", "pyoz"),
+            "password": os.environ.get("MYSQL_PASSWORD", ""),
+            "database": os.environ.get("MYSQL_DATABASE", "app_db"),
+            "running": _tcp_check(mysql_host, port),
+        }
+
+    # MongoDB
+    mongo_host = os.environ.get("MONGO_HOST", "")
+    if mongo_host:
+        port = int(os.environ.get("MONGO_PORT", 27017))
+        services["mongodb"] = {
+            "name": "MongoDB",
+            "engine_key": "mongodb",
+            "host": mongo_host,
+            "port": port,
+            "user": os.environ.get("MONGO_USER", "pyoz"),
+            "password": os.environ.get("MONGO_PASSWORD", ""),
+            "database": os.environ.get("MONGO_DB", "app_db"),
+            "connection_string": os.environ.get("MONGO_URL", ""),
+            "running": _tcp_check(mongo_host, port),
+        }
+
+    # Redis
+    redis_host = os.environ.get("REDIS_HOST", "")
+    if redis_host:
+        port = int(os.environ.get("REDIS_PORT", 6379))
+        services["redis"] = {
+            "name": "Redis",
+            "engine_key": "redis",
+            "host": redis_host,
+            "port": port,
+            "password": os.environ.get("REDIS_PASSWORD", ""),
+            "connection_string": os.environ.get("REDIS_URL", ""),
+            "running": _tcp_check(redis_host, port),
+        }
+
+    # Kafka
+    kafka_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
+    if kafka_servers:
+        host_port = kafka_servers.split(",")[0]
+        parts = host_port.split(":")
+        host = parts[0]
+        port = int(parts[1]) if len(parts) > 1 else 9092
+        services["kafka"] = {
+            "name": "Apache Kafka",
+            "host": host,
+            "port": port,
+            "bootstrap_servers": kafka_servers,
+            "running": _tcp_check(host, port),
+        }
+
+    # RabbitMQ
+    rabbitmq_host = os.environ.get("RABBITMQ_HOST", "")
+    if rabbitmq_host:
+        port = int(os.environ.get("RABBITMQ_PORT", 5672))
+        services["rabbitmq"] = {
+            "name": "RabbitMQ",
+            "host": rabbitmq_host,
+            "port": port,
+            "user": os.environ.get("RABBITMQ_USER", "pyoz"),
+            "password": os.environ.get("RABBITMQ_PASSWORD", ""),
+            "connection_string": os.environ.get("RABBITMQ_URL", ""),
+            "running": _tcp_check(rabbitmq_host, port),
+        }
+
+    # Elasticsearch
+    es_host = os.environ.get("ELASTICSEARCH_HOST", "")
+    if es_host:
+        port = int(os.environ.get("ELASTICSEARCH_PORT", 9200))
+        services["elasticsearch"] = {
+            "name": "Elasticsearch",
+            "host": es_host,
+            "port": port,
+            "url": os.environ.get("ELASTICSEARCH_URL", ""),
+            "running": _tcp_check(es_host, port),
+        }
+
+    # MinIO
+    minio_endpoint = os.environ.get("MINIO_ENDPOINT", "")
+    if minio_endpoint:
+        parts = minio_endpoint.split(":")
+        host = parts[0]
+        port = int(parts[1]) if len(parts) > 1 else 9000
+        services["minio"] = {
+            "name": "MinIO (S3-compatible)",
+            "host": host,
+            "port": port,
+            "access_key": os.environ.get("MINIO_ACCESS_KEY", ""),
+            "secret_key": os.environ.get("MINIO_SECRET_KEY", ""),
+            "running": _tcp_check(host, port),
+        }
+
+    return services
+
+
 # ── Detection functions ──────────────────────────────────────
 
 def _detect_databases() -> list[dict[str, Any]]:
@@ -329,12 +468,16 @@ def environment_discovery(category: str = "all") -> str:
     """
     category = category.lower().strip()
 
+    # In sandbox mode, include Docker service discovery with credentials
+    sandbox_services = _detect_sandbox_services() if _is_sandbox() else {}
+
     if category == "all":
         result = {
             "platform": {
                 "os": platform.system(),
                 "release": platform.release(),
                 "machine": platform.machine(),
+                "sandbox": _is_sandbox(),
             },
             "databases": _detect_databases(),
             "runtimes": _detect_runtimes(),
@@ -343,13 +486,24 @@ def environment_discovery(category: str = "all") -> str:
             "infra_tools": _detect_infra_tools(),
             "running_services": _detect_running_services(),
         }
+        if sandbox_services:
+            result["sandbox_services"] = sandbox_services
         return json.dumps(result, indent=2)
 
     elif category == "databases":
         dbs = _detect_databases()
+        result_db: dict[str, Any] = {}
         if not dbs:
-            return json.dumps({"databases": [], "note": "No databases detected. SQLite is always available via Python's sqlite3 module."})
-        return json.dumps({"databases": dbs}, indent=2)
+            result_db = {"databases": [], "note": "No databases detected. SQLite is always available via Python's sqlite3 module."}
+        else:
+            result_db = {"databases": dbs}
+        # In sandbox mode, add connection details
+        if sandbox_services:
+            db_keys = {"postgres", "mysql", "mongodb", "redis", "elasticsearch"}
+            result_db["sandbox_connections"] = {
+                k: v for k, v in sandbox_services.items() if k in db_keys
+            }
+        return json.dumps(result_db, indent=2)
 
     elif category == "runtimes":
         return json.dumps({"runtimes": _detect_runtimes()}, indent=2)
@@ -364,7 +518,10 @@ def environment_discovery(category: str = "all") -> str:
         return json.dumps({"infra_tools": _detect_infra_tools()}, indent=2)
 
     elif category == "services":
-        return json.dumps({"running_services": _detect_running_services()}, indent=2)
+        result_svc: dict[str, Any] = {"running_services": _detect_running_services()}
+        if sandbox_services:
+            result_svc["sandbox_services"] = sandbox_services
+        return json.dumps(result_svc, indent=2)
 
     elif category == "recommend":
         return _build_recommendation()
