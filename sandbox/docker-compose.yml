@@ -141,7 +141,7 @@ services:
     networks:
       - agent-net
     ports:
-      - "127.0.0.1:${MONGO_EXTERNAL_PORT:-27017}:27017"
+      - "127.0.0.1:${MONGO_EXTERNAL_PORT:-27018}:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-pyoz}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-pyoz_secret}
