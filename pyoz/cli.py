@@ -315,7 +315,7 @@ Examples:
                         help="LLM provider (default: claude)")
     parser.add_argument("--api-key", help="API key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY env var)")
     parser.add_argument("--model", help="Model name override")
-    parser.add_argument("--ollama-url", default="http://localhost:11434", help="Ollama server URL")
+    parser.add_argument("--ollama-url", default=None, help="Ollama server URL (default: OLLAMA_URL env or http://localhost:11434)")
     parser.add_argument("--work-dir", help="Working directory (default: current)")
     parser.add_argument("--no-stream", action="store_true", help="Disable streaming output (streaming is on by default)")
     parser.add_argument("--no-resume", action="store_true", help="Don't resume previous session")
