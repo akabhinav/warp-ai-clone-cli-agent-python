@@ -9,14 +9,14 @@ from pyoz.tools.registry import (
 
 class TestToolDefinitions:
     def test_has_13_tools(self):
-        assert len(TOOL_DEFINITIONS) == 24
+        assert len(TOOL_DEFINITIONS) == 29
 
     def test_tool_names(self):
         names = [t["name"] for t in TOOL_DEFINITIONS]
         expected = [
             "read_file", "write_file", "edit_file", "search_files",
             "list_directory", "run_command", "git_init", "git_commit",
-            "git_diff", "git_undo", "git_log", "codebase_index", "static_config",
+            "git_diff", "git_undo", "git_log", "codebase_index", "static_config", "ask_user",
         ]
         for name in expected:
             assert name in names, f"Missing tool: {name}"
@@ -34,7 +34,7 @@ class TestToolDefinitions:
 class TestClaudeFormat:
     def test_format(self):
         tools = get_tool_definitions_claude()
-        assert len(tools) == 24
+        assert len(tools) == 29
         for t in tools:
             assert "name" in t
             assert "description" in t
@@ -49,7 +49,7 @@ class TestClaudeFormat:
 class TestOpenAIFormat:
     def test_format(self):
         tools = get_tool_definitions_openai()
-        assert len(tools) == 24
+        assert len(tools) == 29
         for t in tools:
             assert t["type"] == "function"
             assert "function" in t

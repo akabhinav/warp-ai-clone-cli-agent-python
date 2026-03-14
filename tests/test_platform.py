@@ -221,8 +221,8 @@ class TestRegistryPlatformAware:
     def test_tool_count_with_platform_info(self):
         from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
         # Now 14 tools (13 original + platform_info)
-        assert len(get_tool_definitions_claude()) == 24
-        assert len(get_tool_definitions_openai()) == 24
+        assert len(get_tool_definitions_claude()) == 29
+        assert len(get_tool_definitions_openai()) == 29
 
     def test_run_command_description_exists(self):
         from pyoz.tools.registry import get_tool_definitions_claude

@@ -342,7 +342,7 @@ class TestScheduleTask:
 class TestTier2Registry:
     def test_all_24_tools(self):
         from pyoz.tools.registry import TOOL_DEFINITIONS
-        assert len(TOOL_DEFINITIONS) == 24
+        assert len(TOOL_DEFINITIONS) == 29
 
     def test_tier2_names_present(self):
         from pyoz.tools.registry import TOOL_DEFINITIONS
@@ -360,8 +360,8 @@ class TestTier2Registry:
 
     def test_claude_format_24(self):
         from pyoz.tools.registry import get_tool_definitions_claude
-        assert len(get_tool_definitions_claude()) == 24
+        assert len(get_tool_definitions_claude()) == 29
 
     def test_openai_format_24(self):
         from pyoz.tools.registry import get_tool_definitions_openai
-        assert len(get_tool_definitions_openai()) == 24
+        assert len(get_tool_definitions_openai()) == 29

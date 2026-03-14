@@ -501,10 +501,10 @@ class TestToolRegistry(unittest.TestCase):
     """Test that tool registry is consistent."""
 
     def test_claude_definitions_count(self):
-        """Should have 28 tools defined."""
+        """Should have 29 tools defined."""
         tools = get_tool_definitions_claude()
         tool_names = [t["name"] for t in tools]
-        self.assertEqual(len(tools), 28, f"Expected 28 tools, got {len(tools)}: {tool_names}")
+        self.assertEqual(len(tools), 29, f"Expected 29 tools, got {len(tools)}: {tool_names}")
 
     def test_openai_definitions_count(self):
         """OpenAI definitions should match Claude count."""
