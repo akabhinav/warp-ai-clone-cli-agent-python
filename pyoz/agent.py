@@ -25,6 +25,11 @@ from pyoz.tools.dotnet_tools import dotnet_cli
 from pyoz.tools.env_tools import env_manager
 from pyoz.tools.process_tools import process_manager
 from pyoz.tools.system_tools import system_info
+from pyoz.tools.docker_tools import docker_tool
+from pyoz.tools.service_tools import service_manager
+from pyoz.tools.http_tools import http_request
+from pyoz.tools.msbuild_tools import msbuild_tool
+from pyoz.tools.schedule_tools import schedule_task
 from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
 from pyoz.indexer.ast_indexer import ASTIndexer
 
@@ -76,7 +81,12 @@ IMPORTANT BEHAVIORS:
 8. Use dotnet_cli for .NET/C# projects (build, test, run, add packages).
 9. Use env_manager to read/set environment variables and load .env files.
 10. Use process_manager to find processes, check port usage, kill processes.
-11. Use system_info to check OS details, installed SDKs, disk/memory."""
+11. Use system_info to check OS details, installed SDKs, disk/memory.
+12. Use docker_tool for Docker/Compose lifecycle (build, run, compose-up/down).
+13. Use service_manager for system services (start/stop/restart/logs).
+14. Use http_request for API testing (GET/POST/PUT/DELETE with JSON).
+15. Use msbuild_tool for .NET solutions (.sln build, project refs, NuGet).
+16. Use schedule_task for cron jobs (Unix) or Task Scheduler (Windows)."""
 
     # Platform-specific instructions
     prompt += f"\n\nPLATFORM: {shell_info['platform']} (shell: {shell_info['name']})"
@@ -481,6 +491,49 @@ class Agent:
 
             elif name == "system_info":
                 return system_info(args.get("category", "overview"))
+
+            elif name == "docker_tool":
+                return docker_tool(
+                    action=args["action"],
+                    target=args.get("target", ""),
+                    args=args.get("args", ""),
+                    cwd=self.work_dir,
+                )
+
+            elif name == "service_manager":
+                return service_manager(
+                    action=args["action"],
+                    name=args.get("name", ""),
+                    args=args.get("args", ""),
+                )
+
+            elif name == "http_request":
+                return http_request(
+                    method=args["method"],
+                    url=args["url"],
+                    headers=args.get("headers"),
+                    body=args.get("body", ""),
+                    json_body=args.get("json_body"),
+                    query_params=args.get("query_params"),
+                    auth_token=args.get("auth_token", ""),
+                )
+
+            elif name == "msbuild_tool":
+                return msbuild_tool(
+                    action=args["action"],
+                    target=args.get("target", ""),
+                    args=args.get("args", ""),
+                    cwd=self.work_dir,
+                )
+
+            elif name == "schedule_task":
+                return schedule_task(
+                    action=args["action"],
+                    name=args.get("name", ""),
+                    command=args.get("command", ""),
+                    schedule=args.get("schedule", ""),
+                    description=args.get("description", ""),
+                )
 
             else:
                 return f"Error: Unknown tool '{name}'"

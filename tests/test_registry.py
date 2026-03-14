@@ -9,7 +9,7 @@ from pyoz.tools.registry import (
 
 class TestToolDefinitions:
     def test_has_13_tools(self):
-        assert len(TOOL_DEFINITIONS) == 19
+        assert len(TOOL_DEFINITIONS) == 24
 
     def test_tool_names(self):
         names = [t["name"] for t in TOOL_DEFINITIONS]
@@ -34,7 +34,7 @@ class TestToolDefinitions:
 class TestClaudeFormat:
     def test_format(self):
         tools = get_tool_definitions_claude()
-        assert len(tools) == 19
+        assert len(tools) == 24
         for t in tools:
             assert "name" in t
             assert "description" in t
@@ -49,7 +49,7 @@ class TestClaudeFormat:
 class TestOpenAIFormat:
     def test_format(self):
         tools = get_tool_definitions_openai()
-        assert len(tools) == 19
+        assert len(tools) == 24
         for t in tools:
             assert t["type"] == "function"
             assert "function" in t

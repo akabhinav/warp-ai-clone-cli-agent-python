@@ -350,7 +350,7 @@ class TestSystemInfo:
 class TestNewToolsInRegistry:
     def test_all_19_tools(self):
         from pyoz.tools.registry import TOOL_DEFINITIONS
-        assert len(TOOL_DEFINITIONS) == 19
+        assert len(TOOL_DEFINITIONS) == 24
 
     def test_new_tool_names_present(self):
         from pyoz.tools.registry import TOOL_DEFINITIONS
@@ -380,7 +380,7 @@ class TestNewToolsInRegistry:
     def test_claude_format(self):
         from pyoz.tools.registry import get_tool_definitions_claude
         tools = get_tool_definitions_claude()
-        assert len(tools) == 19
+        assert len(tools) == 24
         names = [t["name"] for t in tools]
         assert "package_manager" in names
         assert "system_info" in names
@@ -388,7 +388,7 @@ class TestNewToolsInRegistry:
     def test_openai_format(self):
         from pyoz.tools.registry import get_tool_definitions_openai
         tools = get_tool_definitions_openai()
-        assert len(tools) == 19
+        assert len(tools) == 24
         names = [t["function"]["name"] for t in tools]
         assert "package_manager" in names
         assert "system_info" in names

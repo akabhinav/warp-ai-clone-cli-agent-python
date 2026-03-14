@@ -298,6 +298,168 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    # --- Tier 2 Tools ---
+    {
+        "name": "docker_tool",
+        "description": (
+            "Docker and Docker Compose management: build images, run/stop/restart containers, "
+            "view logs, manage images/volumes/networks, compose up/down. "
+            "Requires Docker installed."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": (
+                        "Action — Containers: run, exec, stop, start, restart, rm, ps, logs, inspect; "
+                        "Images: build, pull, push, images, rmi, tag; "
+                        "Compose: compose-up, compose-down, compose-build, compose-logs, compose-ps, compose-restart, compose-exec; "
+                        "System: info, version, prune, networks, volumes, stats"
+                    ),
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Container/image name, service name, or Dockerfile path",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Additional flags (e.g. '-d -p 8080:80', '--build', '-f docker-compose.prod.yml')",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "service_manager",
+        "description": (
+            "Manage system services (Windows: PowerShell services, Linux: systemd, macOS: launchctl). "
+            "Start, stop, restart, enable/disable services, view logs."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action: list, find, status, start, stop, restart, enable, disable, logs",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Service name (required for most actions)",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Extra arguments (e.g. number of log lines)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "http_request",
+        "description": (
+            "Make HTTP API requests (GET, POST, PUT, PATCH, DELETE). "
+            "Supports JSON bodies, custom headers, bearer auth, query params. "
+            "Returns status code, headers, and response body."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "description": "HTTP method: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "Full URL to request (e.g. https://api.example.com/users)",
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "HTTP headers as key-value pairs",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Raw request body string",
+                },
+                "json_body": {
+                    "type": "object",
+                    "description": "JSON request body (auto-sets Content-Type)",
+                },
+                "query_params": {
+                    "type": "object",
+                    "description": "URL query parameters as key-value pairs",
+                },
+                "auth_token": {
+                    "type": "string",
+                    "description": "Bearer token for Authorization header",
+                },
+            },
+            "required": ["method", "url"],
+        },
+    },
+    {
+        "name": "msbuild_tool",
+        "description": (
+            "MSBuild and Visual Studio Solution management. Build .sln/.csproj projects, "
+            "manage solution structure, project references. Uses dotnet CLI or MSBuild."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": (
+                        "Action — Build: build, rebuild, clean, restore, publish, test; "
+                        "Solution: sln-new, sln-list, sln-add, sln-remove; "
+                        "Project: proj-list, proj-add-ref, proj-remove-ref; "
+                        "Info: info, find-solutions, find-projects"
+                    ),
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Solution (.sln) or project (.csproj) path",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Extra arguments (config, platform, package/project names)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "schedule_task",
+        "description": (
+            "Manage scheduled tasks. Windows: Task Scheduler (daily, weekly, hourly, startup, logon). "
+            "Unix: cron jobs (5-field cron expression). Create, delete, enable/disable, run."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action: list, create, delete, enable, disable, status, run",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Task/job name",
+                },
+                "command": {
+                    "type": "string",
+                    "description": "Command to execute (for create)",
+                },
+                "schedule": {
+                    "type": "string",
+                    "description": "Schedule: cron '0 9 * * *' (Unix) or 'daily 09:00', 'weekly Monday 09:00', 'hourly', 'startup' (Windows)",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Task description (optional)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
 ]
 
 

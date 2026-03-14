@@ -478,9 +478,9 @@ def standalone_func(x: int) -> int:
 
     # Test tool registry
     from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
-    assert len(get_tool_definitions_claude()) == 19
-    assert len(get_tool_definitions_openai()) == 19
-    _pass("tool registry (19 tools)")
+    assert len(get_tool_definitions_claude()) == 24
+    assert len(get_tool_definitions_openai()) == 24
+    _pass("tool registry (24 tools)")
 
     # Test workspace manager
     with tempfile.TemporaryDirectory() as tmpdir:
