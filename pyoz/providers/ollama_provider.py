@@ -1,6 +1,7 @@
 """Ollama LLM provider using native tool calling."""
 
 import json
+import os
 import time
 from typing import Any
 
@@ -18,7 +19,7 @@ class OllamaProvider(BaseLLMProvider):
 
     def __init__(self, model: str | None = None, base_url: str | None = None, **kwargs):
         super().__init__(api_key=None, model=model or DEFAULT_MODEL)
-        self.base_url = (base_url or DEFAULT_URL).rstrip("/")
+        self.base_url = (base_url or os.environ.get("OLLAMA_URL") or DEFAULT_URL).rstrip("/")
         self._client = httpx.Client(timeout=300.0)
 
     @property
