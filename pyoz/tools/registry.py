@@ -505,6 +505,146 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["action"],
         },
     },
+    # --- Database ---
+    {
+        "name": "database_tool",
+        "description": (
+            "Connect to and query any database engine. Supports PostgreSQL, MySQL, MariaDB, "
+            "SQLite, MongoDB, Redis, and MSSQL. Execute SQL queries, list tables, describe "
+            "schemas, get server info. For MongoDB: JSON-based find/insert/update/delete/aggregate. "
+            "For Redis: direct commands (GET, SET, KEYS, etc.). User provides credentials."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action: query, list-tables, describe, info",
+                },
+                "engine": {
+                    "type": "string",
+                    "description": "Database engine: sqlite, postgres, mysql, mariadb, mssql, mongodb, redis",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "SQL query, MongoDB JSON query, Redis command, or table name for describe",
+                },
+                "host": {
+                    "type": "string",
+                    "description": "Database host (default: localhost)",
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Database port (default: engine-specific)",
+                },
+                "database": {
+                    "type": "string",
+                    "description": "Database name (or file path for SQLite)",
+                },
+                "username": {
+                    "type": "string",
+                    "description": "Database username",
+                },
+                "password": {
+                    "type": "string",
+                    "description": "Database password",
+                },
+                "connection_string": {
+                    "type": "string",
+                    "description": "Full connection string (overrides individual params)",
+                },
+            },
+            "required": ["action", "engine"],
+        },
+    },
+    # --- Git Workflow / PR ---
+    {
+        "name": "git_workflow_tool",
+        "description": (
+            "Automated git workflow: create branches, push, create/review/merge pull requests, "
+            "clone repos, create releases. Works with GitHub (gh CLI) and GitLab (glab CLI). "
+            "Includes auto-branch-push-pr (one-shot: branch → push → PR) and auto-fix-pr "
+            "(checkout PR → ready for fixes). Enables fully autonomous code → deploy pipelines."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": (
+                        "Action — Branch: create-branch, switch-branch, list-branches, delete-branch, "
+                        "push, pull, fetch, rebase, merge-branch, stash, stash-pop; "
+                        "PR: pr-create, pr-list, pr-view, pr-diff, pr-merge, pr-close, "
+                        "pr-review, pr-approve, pr-comment, pr-checkout; "
+                        "Repo: clone, fork, repo-view, release-create, release-list; "
+                        "Automation: auto-branch-push-pr, auto-fix-pr"
+                    ),
+                },
+                "target": {
+                    "type": "string",
+                    "description": "PR number, branch name, repo URL, release tag, or run ID",
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Base branch for PR or branch creation (default: main)",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "PR title, commit message, or release title",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "PR description, review comment, or release notes",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Additional flags (e.g. '--draft', '--squash', '--reviewer=user')",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    # --- CI/CD ---
+    {
+        "name": "cicd_tool",
+        "description": (
+            "CI/CD pipeline management: trigger, monitor, and manage GitHub Actions workflows "
+            "and GitLab CI pipelines. View run status, watch for completion, get logs, rerun "
+            "failed jobs, cancel runs. Enables autonomous build-test-deploy with failure detection."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": (
+                        "Action — GitHub Actions: workflow-list, workflow-run, run-list, run-view, "
+                        "run-watch, run-logs, run-rerun, run-cancel, check-status; "
+                        "GitLab CI: pipeline-list, pipeline-view, pipeline-create, pipeline-cancel, "
+                        "pipeline-retry, job-list, job-log; "
+                        "General: status, wait"
+                    ),
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Run ID, pipeline ID, job ID, or workflow name",
+                },
+                "workflow": {
+                    "type": "string",
+                    "description": "Workflow file name (e.g. 'ci.yml', 'deploy.yml')",
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch to trigger workflow on (default: current)",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Additional flags or workflow inputs as JSON (e.g. '{\"env\": \"prod\"}')",
+                },
+            },
+            "required": ["action"],
+        },
+    },
 ]
 
 

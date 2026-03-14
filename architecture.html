@@ -784,10 +784,10 @@
   <header class="hero">
     <div class="hero-badge">System Architecture</div>
     <h1>PyOz</h1>
-    <p>A pure agent-mode coding assistant with 24 cross-platform tools, multi-provider LLM support, and an agentic tool-calling loop.</p>
+    <p>A pure agent-mode coding assistant with 28 cross-platform tools, multi-provider LLM support, and a fully autonomous build-test-deploy pipeline.</p>
     <div class="hero-stats">
       <div class="hero-stat">
-        <div class="hero-stat-value">25</div>
+        <div class="hero-stat-value">28</div>
         <div class="hero-stat-label">Tools</div>
       </div>
       <div class="hero-stat">
@@ -950,6 +950,9 @@
           <span class="layer-chip c-amber">System (5)</span>
           <span class="layer-chip c-amber">Cloud (6)</span>
           <span class="layer-chip c-amber">K8s &amp; Helm (1)</span>
+          <span class="layer-chip c-amber">Database (1)</span>
+          <span class="layer-chip c-amber">PR Workflow (1)</span>
+          <span class="layer-chip c-amber">CI/CD (1)</span>
         </div>
       </div>
 
@@ -1188,6 +1191,72 @@
         </div>
       </div>
 
+      <!-- Database -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(45,212,191,0.12); color:var(--teal);">&#128451;</div>
+          <div class="card-title-group">
+            <div class="card-title">Database Engine</div>
+            <div class="card-file">pyoz/tools/database_tools.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Universal database client. Connects to PostgreSQL (psycopg2), MySQL (mysql-connector/pymysql), SQLite (built-in), MongoDB (pymongo), Redis (redis-py), and MSSQL (pymssql/pyodbc). Execute SQL queries, list tables, describe schemas, get server info. MongoDB supports find, insert, update, delete, count, and aggregate pipelines. Redis supports all direct commands. User just provides credentials.</div>
+          <ul class="card-list">
+            <li>database_tool()</li>
+            <li>query</li>
+            <li>list-tables</li>
+            <li>describe</li>
+            <li>info</li>
+            <li>7 engines</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Git Workflow -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(251,146,60,0.12); color:var(--orange);">&#128256;</div>
+          <div class="card-title-group">
+            <div class="card-title">Git Workflow &amp; PR</div>
+            <div class="card-file">pyoz/tools/git_workflow_tools.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Automated pull request lifecycle for GitHub (gh CLI) and GitLab (glab CLI). Branch management (create, switch, push, rebase), full PR lifecycle (create, review, approve, merge, close, comment), repo operations (clone, fork, releases). Composite actions: auto-branch-push-pr creates a branch, pushes, and opens a PR in one call. auto-fix-pr checks out a PR for agent to fix.</div>
+          <ul class="card-list">
+            <li>git_workflow_tool()</li>
+            <li>pr-create / pr-merge</li>
+            <li>pr-review / pr-approve</li>
+            <li>auto-branch-push-pr</li>
+            <li>auto-fix-pr</li>
+            <li>release-create</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- CI/CD -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(244,114,182,0.12); color:var(--pink);">&#9654;</div>
+          <div class="card-title-group">
+            <div class="card-title">CI/CD Pipelines</div>
+            <div class="card-file">pyoz/tools/cicd_tools.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Trigger and monitor CI/CD pipelines on GitHub Actions and GitLab CI. List workflows, trigger runs with custom inputs, watch runs until completion, view failed logs, rerun failed jobs, cancel in-progress runs. Auto-detects CI platform from repo files. The "wait" action blocks until CI passes, enabling autonomous deploy-on-green pipelines.</div>
+          <ul class="card-list">
+            <li>cicd_tool()</li>
+            <li>workflow-run</li>
+            <li>run-watch / wait</li>
+            <li>run-logs</li>
+            <li>run-rerun</li>
+            <li>pipeline-create</li>
+          </ul>
+        </div>
+      </div>
+
       <!-- Command Tools -->
       <div class="card">
         <div class="card-header">
@@ -1216,8 +1285,8 @@
   <!-- ════════════════════ ALL 24 TOOLS ════════════════════ -->
   <section class="section">
     <div class="section-label">Tool System</div>
-    <div class="section-title">All 25 Tools</div>
-    <div class="section-desc">Six categories of tools the LLM can call autonomously. The agent's system prompt includes a selection guide telling the LLM when to prefer each tool.</div>
+    <div class="section-title">All 28 Tools</div>
+    <div class="section-desc">Eight categories of tools the LLM can call autonomously. The agent's system prompt includes a selection guide telling the LLM when to prefer each tool.</div>
 
     <div class="tool-grid">
       <!-- File Tools -->
@@ -1395,6 +1464,30 @@
         <div class="tool-desc">Full Kubernetes &amp; Helm lifecycle. Deploy apps, manage pods/deployments/services, scale, rollout, apply manifests, Helm charts, Kustomize.</div>
         <div class="tool-actions"><span class="tool-action">apply</span><span class="tool-action">scale</span><span class="tool-action">rollout</span><span class="tool-action">helm-install</span><span class="tool-action">logs</span><span class="tool-action">get-pods</span><span class="tool-action">describe</span><span class="tool-action">exec</span></div>
       </div>
+
+      <!-- Database -->
+      <div class="tool-card t-teal">
+        <div class="tool-tier" style="color:var(--teal); background:rgba(45,212,191,0.1);">DB</div>
+        <div class="tool-name">database_tool</div>
+        <div class="tool-desc">Connect to any database: PostgreSQL, MySQL, SQLite, MongoDB, Redis, MSSQL. Run queries, list tables, describe schemas.</div>
+        <div class="tool-actions"><span class="tool-action">query</span><span class="tool-action">list-tables</span><span class="tool-action">describe</span><span class="tool-action">info</span><span class="tool-action">find</span><span class="tool-action">aggregate</span></div>
+      </div>
+
+      <!-- Git Workflow -->
+      <div class="tool-card t-orange">
+        <div class="tool-tier" style="color:var(--orange); background:rgba(251,146,60,0.1);">Git+</div>
+        <div class="tool-name">git_workflow_tool</div>
+        <div class="tool-desc">Full PR lifecycle: create branches, push, create/review/merge PRs, clone, fork, releases. One-shot auto-branch-push-pr automation.</div>
+        <div class="tool-actions"><span class="tool-action">pr-create</span><span class="tool-action">pr-merge</span><span class="tool-action">pr-review</span><span class="tool-action">auto-branch-push-pr</span><span class="tool-action">auto-fix-pr</span><span class="tool-action">clone</span></div>
+      </div>
+
+      <!-- CI/CD -->
+      <div class="tool-card t-pink">
+        <div class="tool-tier" style="color:var(--pink); background:rgba(244,114,182,0.1);">CI/CD</div>
+        <div class="tool-name">cicd_tool</div>
+        <div class="tool-desc">Trigger &amp; monitor GitHub Actions and GitLab CI pipelines. Watch runs, get logs, rerun failures, wait for CI to pass.</div>
+        <div class="tool-actions"><span class="tool-action">workflow-run</span><span class="tool-action">run-watch</span><span class="tool-action">run-logs</span><span class="tool-action">run-rerun</span><span class="tool-action">status</span><span class="tool-action">wait</span></div>
+      </div>
     </div>
   </section>
 
@@ -1557,6 +1650,9 @@
 <span class="indent2"><span class="file">msbuild_tools.py</span> <span class="note">&#8594; Visual Studio .sln &amp; .csproj management</span></span>
 <span class="indent2"><span class="file">schedule_tools.py</span> <span class="note">&#8594; Cron (Unix) &amp; Task Scheduler (Windows)</span></span>
 <span class="indent2"><span class="hl">kubernetes_tools.py</span> <span class="note">&#8594; kubectl &amp; Helm: deploy, scale, rollout, logs (50+ actions)</span></span>
+<span class="indent2"><span class="hl">database_tools.py</span>  <span class="note">&#8594; PostgreSQL, MySQL, SQLite, MongoDB, Redis, MSSQL</span></span>
+<span class="indent2"><span class="hl">git_workflow_tools.py</span> <span class="note">&#8594; PR create/review/merge, branches, releases (GitHub &amp; GitLab)</span></span>
+<span class="indent2"><span class="hl">cicd_tools.py</span>      <span class="note">&#8594; GitHub Actions &amp; GitLab CI: trigger, watch, logs, rerun</span></span>
 <span class="indent"></span>
 <span class="indent"><span class="dir">indexer/</span></span>
 <span class="indent2"><span class="file">ast_indexer.py</span>   <span class="note">&#8594; Multi-language AST parsing &amp; symbol extraction</span></span>
@@ -1582,7 +1678,7 @@
 
   <!-- ════════════════════ FOOTER ════════════════════ -->
   <footer class="footer">
-    <p>PyOz Architecture &mdash; 25 tools &middot; 3 providers &middot; 3 platforms &middot; Kubernetes-ready</p>
+    <p>PyOz Architecture &mdash; 28 tools &middot; 3 providers &middot; 7 databases &middot; CI/CD &middot; Kubernetes &middot; Zero human intervention</p>
   </footer>
 
 </div>

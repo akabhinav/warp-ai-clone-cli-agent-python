@@ -31,6 +31,9 @@ from pyoz.tools.http_tools import http_request
 from pyoz.tools.msbuild_tools import msbuild_tool
 from pyoz.tools.schedule_tools import schedule_task
 from pyoz.tools.kubernetes_tools import kubernetes_tool
+from pyoz.tools.database_tools import database_tool
+from pyoz.tools.git_workflow_tools import git_workflow_tool
+from pyoz.tools.cicd_tools import cicd_tool
 from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
 from pyoz.indexer.ast_indexer import ASTIndexer
 
@@ -113,6 +116,19 @@ TOOL SELECTION GUIDE:
   pods/deployments/services, viewing logs, scaling, rollouts/rollbacks, applying
   manifests, Helm charts, Kustomize builds, ConfigMaps, Secrets, and node
   management. Always prefer this over run_command with kubectl/helm commands.
+- database_tool: Connect to any database. Supports PostgreSQL, MySQL, SQLite,
+  MongoDB, Redis, MSSQL. Use for running queries, listing tables, describing
+  schemas, checking server info. User provides credentials (host, port, username,
+  password, or connection_string). Always prefer this over run_command with
+  psql/mysql/sqlite3/mongosh/redis-cli commands.
+- git_workflow_tool: Full PR lifecycle. Create branches, push, create/review/merge
+  PRs, clone repos, create releases. Use auto-branch-push-pr for one-shot
+  branch→push→PR creation. Use auto-fix-pr to checkout and fix a PR. Always
+  prefer this over run_command with gh/glab/git push commands.
+- cicd_tool: CI/CD pipeline management. Trigger GitHub Actions or GitLab CI
+  pipelines, view run status, watch for completion, get logs, rerun failed jobs.
+  Use action="status" for quick CI check, action="wait" to block until CI passes.
+  Always prefer this over run_command with gh run/glab ci commands.
 - platform_info: Check current OS and shell. Use when you need to decide
   between platform-specific approaches.
 - codebase_index: Get AST summary of the codebase. Use at start of work
@@ -570,6 +586,40 @@ class Agent:
                     action=args["action"],
                     target=args.get("target", ""),
                     namespace=args.get("namespace", ""),
+                    args=args.get("args", ""),
+                    cwd=self.work_dir,
+                )
+
+            elif name == "database_tool":
+                return database_tool(
+                    action=args["action"],
+                    engine=args.get("engine", "sqlite"),
+                    query=args.get("query", ""),
+                    host=args.get("host", ""),
+                    port=args.get("port", 0),
+                    database=args.get("database", ""),
+                    username=args.get("username", ""),
+                    password=args.get("password", ""),
+                    connection_string=args.get("connection_string", ""),
+                )
+
+            elif name == "git_workflow_tool":
+                return git_workflow_tool(
+                    action=args["action"],
+                    target=args.get("target", ""),
+                    branch=args.get("branch", ""),
+                    title=args.get("title", ""),
+                    body=args.get("body", ""),
+                    args=args.get("args", ""),
+                    cwd=self.work_dir,
+                )
+
+            elif name == "cicd_tool":
+                return cicd_tool(
+                    action=args["action"],
+                    target=args.get("target", ""),
+                    workflow=args.get("workflow", ""),
+                    branch=args.get("branch", ""),
                     args=args.get("args", ""),
                     cwd=self.work_dir,
                 )
