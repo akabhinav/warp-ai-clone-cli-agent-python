@@ -20,6 +20,11 @@ from pyoz.tools.git_tools import (
     git_init, git_commit, auto_commit, git_diff, git_undo, git_log, is_git_repo,
 )
 from pyoz.tools.context_tools import static_config, codebase_index, platform_info
+from pyoz.tools.package_tools import package_manager
+from pyoz.tools.dotnet_tools import dotnet_cli
+from pyoz.tools.env_tools import env_manager
+from pyoz.tools.process_tools import process_manager
+from pyoz.tools.system_tools import system_info
 from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
 from pyoz.indexer.ast_indexer import ASTIndexer
 
@@ -65,7 +70,13 @@ IMPORTANT BEHAVIORS:
 5. When editing files, use edit_file for small targeted changes.
    Use write_file only when creating new files or rewriting entirely.
 6. Before creating a project, briefly tell the user your plan.
-   Don't ask for confirmation unless the request is ambiguous."""
+   Don't ask for confirmation unless the request is ambiguous.
+7. Use package_manager to install dependencies (auto-detects
+   winget/choco/brew/apt/pip/npm/cargo based on platform).
+8. Use dotnet_cli for .NET/C# projects (build, test, run, add packages).
+9. Use env_manager to read/set environment variables and load .env files.
+10. Use process_manager to find processes, check port usage, kill processes.
+11. Use system_info to check OS details, installed SDKs, disk/memory."""
 
     # Platform-specific instructions
     prompt += f"\n\nPLATFORM: {shell_info['platform']} (shell: {shell_info['name']})"
@@ -436,6 +447,40 @@ class Agent:
 
             elif name == "platform_info":
                 return platform_info()
+
+            elif name == "package_manager":
+                return package_manager(
+                    action=args["action"],
+                    package=args.get("package", ""),
+                    manager=args.get("manager", ""),
+                )
+
+            elif name == "dotnet_cli":
+                return dotnet_cli(
+                    action=args["action"],
+                    project_path=self._resolve_path(args.get("project_path")) if args.get("project_path") else "",
+                    args=args.get("args", ""),
+                    cwd=self.work_dir,
+                )
+
+            elif name == "env_manager":
+                return env_manager(
+                    action=args["action"],
+                    name=args.get("name", ""),
+                    value=args.get("value", ""),
+                    file_path=self._resolve_path(args.get("file_path")) if args.get("file_path") else "",
+                )
+
+            elif name == "process_manager":
+                return process_manager(
+                    action=args["action"],
+                    pid=args.get("pid", 0),
+                    name=args.get("name", ""),
+                    port=args.get("port", 0),
+                )
+
+            elif name == "system_info":
+                return system_info(args.get("category", "overview"))
 
             else:
                 return f"Error: Unknown tool '{name}'"

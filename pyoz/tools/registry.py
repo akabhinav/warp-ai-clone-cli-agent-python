@@ -172,6 +172,132 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    {
+        "name": "package_manager",
+        "description": (
+            "Manage packages: install, uninstall, search, list, update. "
+            "Supports winget, choco, scoop, brew, apt, dnf, pip, npm, cargo, go, dotnet. "
+            "Auto-detects the best package manager for the current platform."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action: install, uninstall, search, list, update, info, managers",
+                },
+                "package": {
+                    "type": "string",
+                    "description": "Package name (required for install/uninstall/search/info)",
+                },
+                "manager": {
+                    "type": "string",
+                    "description": "Package manager to use (auto-detected if empty). Options: winget, choco, scoop, brew, apt, dnf, pip, npm, cargo, go, dotnet",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "dotnet_cli",
+        "description": (
+            "Run .NET/C# CLI actions: create projects, build, test, run, manage NuGet packages. "
+            "Requires .NET SDK installed."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action: new, build, test, run, publish, clean, restore, add-package, remove-package, list-packages, info, sdk-list",
+                },
+                "project_path": {
+                    "type": "string",
+                    "description": "Path to project/solution (optional, uses working directory)",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Additional arguments (e.g. template name for 'new', package name for 'add-package')",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "env_manager",
+        "description": (
+            "Manage environment variables: get, set, unset, list, load .env files, manage PATH. "
+            "Changes apply to the current process."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action: get, set, unset, list, load-env, save-env, path-list, path-add",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Variable name (for get/set/unset) or prefix filter (for list)",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "Variable value (for set) or directory (for path-add)",
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to .env file (for load-env/save-env, default: .env)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "process_manager",
+        "description": (
+            "Manage system processes: list running processes, find by name, kill by PID, "
+            "list listening ports, find which process uses a port."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "Action: list, find, kill, ports, port-find, tree",
+                },
+                "pid": {
+                    "type": "integer",
+                    "description": "Process ID (for kill, tree)",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Process name filter (for find, list)",
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Port number (for port-find)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "system_info",
+        "description": (
+            "Get system information: OS, CPU, memory, disk, network, installed SDKs. "
+            "Use category='sdks' to check all installed development tools."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "description": "Category: overview, os, cpu, memory, disk, network, sdks, python, node, java, dotnet, rust, go",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
