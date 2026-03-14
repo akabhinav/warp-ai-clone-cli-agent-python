@@ -76,17 +76,42 @@ IMPORTANT BEHAVIORS:
    Use write_file only when creating new files or rewriting entirely.
 6. Before creating a project, briefly tell the user your plan.
    Don't ask for confirmation unless the request is ambiguous.
-7. Use package_manager to install dependencies (auto-detects
-   winget/choco/brew/apt/pip/npm/cargo based on platform).
-8. Use dotnet_cli for .NET/C# projects (build, test, run, add packages).
-9. Use env_manager to read/set environment variables and load .env files.
-10. Use process_manager to find processes, check port usage, kill processes.
-11. Use system_info to check OS details, installed SDKs, disk/memory.
-12. Use docker_tool for Docker/Compose lifecycle (build, run, compose-up/down).
-13. Use service_manager for system services (start/stop/restart/logs).
-14. Use http_request for API testing (GET/POST/PUT/DELETE with JSON).
-15. Use msbuild_tool for .NET solutions (.sln build, project refs, NuGet).
-16. Use schedule_task for cron jobs (Unix) or Task Scheduler (Windows)."""
+
+TOOL SELECTION GUIDE:
+- package_manager: Install/uninstall/search packages. Auto-detects the
+  right manager (winget/choco/brew/apt/pip/npm/cargo). Use action="managers"
+  to see what's available. Prefer this over run_command for package ops.
+- dotnet_cli: .NET/C# project commands. Use for single-project operations
+  (dotnet new/build/test/run/add-package). For solution-level operations
+  (.sln management, multi-project refs), use msbuild_tool instead.
+- env_manager: Read/write environment variables. Use action="load-env" to
+  load .env files, action="path-list"/"path-add" for PATH management.
+  Prefer this over run_command for any env var operations.
+- process_manager: Find what's running and what's using ports. Use
+  action="port-find" when a port is busy, action="find" to locate processes
+  by name, action="kill" to stop a process. Prefer over run_command with ps/kill.
+- system_info: Check system state before starting work. Use category="sdks"
+  to verify tools are installed, category="memory"/"disk" to check resources,
+  category="overview" for a full snapshot.
+- docker_tool: Full Docker lifecycle. Use for building images, running
+  containers, compose up/down, viewing logs, pruning. Always prefer this
+  over run_command with docker/docker-compose commands.
+- service_manager: System services (systemd/PowerShell/launchctl). Use to
+  start/stop databases (mysql, postgres), web servers (nginx, apache),
+  or any system daemon. Use action="find" to search by partial name.
+- http_request: Make API calls. Always prefer this over run_command with
+  curl/wget/Invoke-WebRequest. Supports JSON bodies, auth tokens, headers.
+  Use for testing APIs, health checks, webhook triggers.
+- msbuild_tool: Visual Studio solution management. Use for multi-project
+  .sln operations: sln-add/sln-remove projects, proj-add-ref for project
+  references, build/rebuild entire solutions. For single .csproj, use dotnet_cli.
+- schedule_task: Create recurring jobs. On Unix uses cron (5-field expressions).
+  On Windows uses Task Scheduler (daily/weekly/hourly/startup/logon schedules).
+  Use action="list" to see existing tasks before creating new ones.
+- platform_info: Check current OS and shell. Use when you need to decide
+  between platform-specific approaches.
+- codebase_index: Get AST summary of the codebase. Use at start of work
+  to understand project structure before making changes."""
 
     # Platform-specific instructions
     prompt += f"\n\nPLATFORM: {shell_info['platform']} (shell: {shell_info['name']})"
