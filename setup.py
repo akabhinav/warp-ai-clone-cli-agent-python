@@ -6,6 +6,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         "httpx>=0.27.0",
+        "rich>=13.0.0",
+        "prompt_toolkit>=3.0.0",
     ],
     extras_require={
         "treesitter": ["tree-sitter-languages>=1.10.0"],

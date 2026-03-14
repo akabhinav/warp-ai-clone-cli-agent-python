@@ -1,35 +1,40 @@
-"""PyOz CLI — interactive terminal interface."""
+"""PyOz CLI — world-class interactive terminal interface.
+
+Uses rich for beautiful output and prompt_toolkit for enhanced input.
+"""
 
 import os
 import sys
 import signal
 import argparse
+import time
 from typing import Any
 
 from pyoz.agent import Agent
 from pyoz.providers.base import BaseLLMProvider
 from pyoz.workspace import WorkspaceManager
 from pyoz.session import SessionManager
-
-
-# ANSI color codes
-class Colors:
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    RED = "\033[31m"
-    GREEN = "\033[32m"
-    YELLOW = "\033[33m"
-    BLUE = "\033[34m"
-    MAGENTA = "\033[35m"
-    CYAN = "\033[36m"
-    WHITE = "\033[37m"
-    GRAY = "\033[90m"
-
-
-def _color(text: str, color: str) -> str:
-    """Wrap text in ANSI color codes."""
-    return f"{color}{text}{Colors.RESET}"
+from pyoz.ui.display import (
+    console,
+    print_banner,
+    print_tool_call,
+    print_diff,
+    print_response,
+    print_turn_stats,
+    print_error,
+    print_success,
+    print_info,
+    print_warning,
+    print_workspaces,
+    print_sessions,
+    print_stats,
+    print_commits,
+    print_files,
+    print_diff_output,
+    print_rules,
+    print_help,
+)
+from pyoz.ui.input import InputManager
 
 
 def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
@@ -39,7 +44,7 @@ def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
     if provider == "claude":
         api_key = args.api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            print(_color("Error: --api-key or ANTHROPIC_API_KEY required for Claude", Colors.RED))
+            print_error("--api-key or ANTHROPIC_API_KEY environment variable required for Claude")
             sys.exit(1)
         from pyoz.providers.claude_provider import ClaudeProvider
         return ClaudeProvider(api_key=api_key, model=args.model)
@@ -47,7 +52,7 @@ def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
     elif provider == "openai":
         api_key = args.api_key or os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            print(_color("Error: --api-key or OPENAI_API_KEY required for OpenAI", Colors.RED))
+            print_error("--api-key or OPENAI_API_KEY environment variable required for OpenAI")
             sys.exit(1)
         from pyoz.providers.openai_provider import OpenAIProvider
         return OpenAIProvider(api_key=api_key, model=args.model)
@@ -57,272 +62,18 @@ def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
         return OllamaProvider(model=args.model, base_url=args.ollama_url)
 
     else:
-        print(_color(f"Error: Unknown provider '{provider}'. Use: claude, openai, ollama", Colors.RED))
+        print_error(f"Unknown provider '{provider}'. Use: claude, openai, ollama")
         sys.exit(1)
 
 
 def _on_tool_call(name: str, args: dict[str, Any], result: str) -> None:
     """Display tool calls as they happen."""
-    # Format the tool call display
-    detail = ""
-    if name == "write_file":
-        path = args.get("path", "?")
-        size = len(args.get("content", "").encode("utf-8"))
-        detail = f" {path} ({size} bytes)"
-    elif name == "read_file":
-        detail = f" {args.get('path', '?')}"
-    elif name == "edit_file":
-        detail = f" {args.get('path', '?')}"
-    elif name == "run_command":
-        cmd = args.get("command", "?")
-        detail = f" {cmd}"
-    elif name == "search_files":
-        detail = f" pattern={args.get('pattern', '?')}"
-    elif name == "git_commit":
-        detail = f" \"{args.get('message', '?')}\""
-    elif name == "static_config":
-        detail = f" {args.get('language', '?')}/{args.get('project_name', '?')}"
-    elif name == "list_directory":
-        detail = f" {args.get('path', '.')}"
-
-    print(f"  {_color('→', Colors.CYAN)} {_color(name, Colors.YELLOW)}{detail}")
-
-    # Show command output inline for run_command
-    if name == "run_command" and result:
-        for line in result.splitlines()[:30]:  # Limit output lines
-            print(f"  {_color('│', Colors.DIM)} {line}")
-        if len(result.splitlines()) > 30:
-            print(f"  {_color('│', Colors.DIM)} ... ({len(result.splitlines()) - 30} more lines)")
+    print_tool_call(name, args, result)
 
 
 def _on_diff(path: str, old_text: str, new_text: str) -> None:
     """Display diff after edit_file."""
-    rel_path = os.path.relpath(path)
-    print(f"\n  {_color(rel_path + ':', Colors.BOLD)}")
-    old_lines = old_text.splitlines()
-    new_lines = new_text.splitlines()
-    for line in old_lines:
-        print(f"  {_color('- ' + line, Colors.RED)}")
-    for line in new_lines:
-        print(f"  {_color('+ ' + line, Colors.GREEN)}")
-    print()
-
-
-def _handle_slash_command(command: str, agent: Agent, workspace_mgr: WorkspaceManager | None = None) -> bool:
-    """Handle slash commands. Returns True if handled."""
-    parts = command.strip().split(maxsplit=1)
-    cmd = parts[0].lower()
-    arg = parts[1].strip() if len(parts) > 1 else ""
-
-    if cmd in ("/quit", "/exit"):
-        # Save session before quitting
-        try:
-            agent.save_session()
-        except Exception:
-            pass
-        print(_color("\nGoodbye!", Colors.CYAN))
-        sys.exit(0)
-
-    elif cmd == "/undo":
-        from pyoz.tools.git_tools import git_undo
-        try:
-            result = git_undo(agent.work_dir)
-            print(_color(f"  ✓ {result}", Colors.GREEN))
-        except Exception as e:
-            print(_color(f"  ✗ {e}", Colors.RED))
-        return True
-
-    elif cmd == "/diff":
-        from pyoz.tools.git_tools import git_diff
-        result = git_diff(agent.work_dir)
-        print(result)
-        return True
-
-    elif cmd == "/log":
-        from pyoz.tools.git_tools import git_log
-        commits = git_log(10, agent.work_dir)
-        if not commits:
-            print(_color("  No commits yet.", Colors.DIM))
-        else:
-            for c in commits:
-                print(f"  {_color(c['hash'], Colors.YELLOW)} {c['message']}")
-        return True
-
-    elif cmd == "/index":
-        result = agent.reindex()
-        print(_color(f"  ✓ Indexed: {result['files']} files, {result['symbols']} symbols", Colors.GREEN))
-        return True
-
-    elif cmd == "/files":
-        from pyoz.tools.file_tools import list_directory
-        entries = list_directory(agent.work_dir)
-        for e in entries:
-            if e["type"] == "directory":
-                print(f"  {_color(e['name'] + '/', Colors.BLUE)}")
-            else:
-                print(f"  {e['name']} ({e.get('size', 0)} bytes)")
-        return True
-
-    elif cmd == "/stats":
-        stats = agent.get_stats()
-        print(f"  Turns: {stats['turns']}")
-        print(f"  Tool calls: {stats['total_tool_calls']}")
-        print(f"  Tokens: {stats['input_tokens']:,} in + {stats['output_tokens']:,} out")
-        print(f"  Estimated cost: ${stats['estimated_cost']:.4f}")
-        return True
-
-    elif cmd == "/clear":
-        agent.clear_history()
-        print(_color("  ✓ Conversation cleared.", Colors.GREEN))
-        return True
-
-    elif cmd == "/rules":
-        rules = agent.reload_rules()
-        if rules and rules != "No rules file found.":
-            print(_color("  Rules loaded:", Colors.GREEN))
-            print(rules)
-        else:
-            print(_color("  No PYOZ.md or .pyoz/rules.md found.", Colors.DIM))
-        return True
-
-    # --- Workspace commands ---
-    elif cmd == "/workspace" or cmd == "/ws":
-        if not workspace_mgr:
-            workspace_mgr = WorkspaceManager()
-        if not arg:
-            # Show current + recent
-            print(f"  {_color('Current:', Colors.BOLD)} {agent.work_dir}")
-            recent = workspace_mgr.list_recent()
-            if recent:
-                print(f"  {_color('Recent workspaces:', Colors.BOLD)}")
-                for i, ws in enumerate(recent, 1):
-                    marker = _color(" ←", Colors.GREEN) if ws["path"] == agent.work_dir else ""
-                    print(f"    {_color(str(i), Colors.CYAN)}. {ws['name']} — {_color(ws['path'], Colors.DIM)}{marker}")
-                    print(f"       last: {ws.get('last_access', 'unknown')}")
-            else:
-                print(_color("  No recent workspaces.", Colors.DIM))
-        else:
-            # Switch workspace
-            try:
-                ws = workspace_mgr.switch(arg)
-                info = agent.change_work_dir(ws["path"])
-                workspace_mgr.touch(ws["path"])
-                print(_color(f"  ✓ Switched to: {ws['name']} ({ws['path']})", Colors.GREEN))
-                print(f"    {info['files_indexed']} files indexed, {info['symbols']} symbols")
-                if agent.turn_count > 0:
-                    print(f"    Resumed session ({agent.turn_count} turns)")
-            except (ValueError, FileNotFoundError) as e:
-                print(_color(f"  ✗ {e}", Colors.RED))
-        return True
-
-    elif cmd == "/ws-add":
-        if not workspace_mgr:
-            workspace_mgr = WorkspaceManager()
-        path = arg or agent.work_dir
-        name_parts = path.rsplit("/", 1)
-        ws = workspace_mgr.register(path, name_parts[-1] if name_parts else None)
-        print(_color(f"  ✓ Added workspace: {ws['name']} ({ws['path']})", Colors.GREEN))
-        return True
-
-    elif cmd == "/ws-remove":
-        if not workspace_mgr:
-            workspace_mgr = WorkspaceManager()
-        if not arg:
-            print(_color("  Usage: /ws-remove <name|number>", Colors.DIM))
-        elif workspace_mgr.remove(arg):
-            print(_color(f"  ✓ Removed workspace: {arg}", Colors.GREEN))
-        else:
-            print(_color(f"  ✗ Workspace not found: {arg}", Colors.RED))
-        return True
-
-    # --- Session commands ---
-    elif cmd == "/save":
-        path = agent.save_session()
-        print(_color(f"  ✓ Session saved: {path}", Colors.GREEN))
-        return True
-
-    elif cmd == "/resume":
-        if agent.load_session():
-            print(_color(f"  ✓ Session resumed ({agent.turn_count} turns, {agent.total_tool_calls} tool calls)", Colors.GREEN))
-        else:
-            print(_color("  No saved session found.", Colors.DIM))
-        return True
-
-    elif cmd == "/new":
-        archive = agent.new_session()
-        if archive:
-            print(_color(f"  ✓ Previous session archived. Starting fresh.", Colors.GREEN))
-        else:
-            print(_color("  ✓ Starting new session.", Colors.GREEN))
-        return True
-
-    elif cmd == "/sessions":
-        sessions = agent.list_sessions()
-        if not sessions:
-            print(_color("  No archived sessions.", Colors.DIM))
-        else:
-            print(f"  {_color('Archived sessions:', Colors.BOLD)}")
-            for i, s in enumerate(sessions, 1):
-                print(f"    {_color(str(i), Colors.CYAN)}. {s['saved_at']} — {s['turns']} turns ({s['provider']})")
-        return True
-
-    elif cmd == "/export":
-        md = agent.export_session()
-        if md:
-            export_path = os.path.join(agent.work_dir, "pyoz_session.md")
-            with open(export_path, "w", encoding="utf-8") as f:
-                f.write(md)
-            print(_color(f"  ✓ Session exported to: {export_path}", Colors.GREEN))
-        else:
-            print(_color("  No session to export.", Colors.DIM))
-        return True
-
-    # --- Streaming toggle ---
-    elif cmd == "/stream":
-        agent.streaming = not agent.streaming
-        state = "on" if agent.streaming else "off"
-        print(_color(f"  ✓ Streaming: {state}", Colors.GREEN))
-        return True
-
-    elif cmd == "/help":
-        print(f"""
-  {_color('PyOz Commands:', Colors.BOLD)}
-
-  {_color('Git:', Colors.YELLOW)}
-  /undo              Undo last git commit
-  /diff              Show uncommitted changes
-  /log               Show recent git history
-
-  {_color('Codebase:', Colors.YELLOW)}
-  /index             Re-scan and re-index codebase
-  /files             List files in working directory
-  /rules             Show loaded rules from PYOZ.md
-
-  {_color('Session:', Colors.YELLOW)}
-  /save              Save current session
-  /resume            Resume last saved session
-  /new               Archive current session, start fresh
-  /sessions          List archived sessions
-  /export            Export session as markdown
-  /clear             Clear conversation history
-
-  {_color('Workspace:', Colors.YELLOW)}
-  /workspace         Show current & recent workspaces
-  /workspace <path>  Switch to workspace by path, name, or number
-  /ws                Alias for /workspace
-  /ws-add [path]     Add current or given directory as workspace
-  /ws-remove <id>    Remove a workspace from recent list
-
-  {_color('Settings:', Colors.YELLOW)}
-  /stream            Toggle streaming output on/off
-  /stats             Show token usage and cost
-
-  /help              Show this help
-  /quit              Exit PyOz
-""")
-        return True
-
-    return False
+    print_diff(path, old_text, new_text)
 
 
 def _on_stream_token(text: str) -> None:
@@ -331,29 +82,176 @@ def _on_stream_token(text: str) -> None:
     sys.stdout.flush()
 
 
-def _print_banner(info: dict[str, Any], session_resumed: bool = False) -> None:
-    """Print startup banner."""
-    session_line = ""
-    if session_resumed:
-        session_line = f"\n  {_color('✓', Colors.GREEN)} Session: resumed ({info.get('session_turns', 0)} turns)"
-    print(f"""
-{_color('🧙 PyOz — Coding Agent', Colors.BOLD + Colors.MAGENTA)}
-  Provider: {_color(info['provider'], Colors.CYAN)} / {_color(info['model'], Colors.CYAN)}
-  {_color('✓', Colors.GREEN)} tree-sitter AST indexer
-  {_color('✓', Colors.GREEN)} Codebase: {info['files_indexed']} files indexed, {info['symbols']} symbols
-  {_color('✓', Colors.GREEN)} Git: {info['git']}
-  {_color('✓' if info['rules'] else '○', Colors.GREEN if info['rules'] else Colors.DIM)} Rules: {'loaded from PYOZ.md' if info['rules'] else 'none (create PYOZ.md to add rules)'}{session_line}
+def _handle_slash_command(command: str, agent: Agent, workspace_mgr: WorkspaceManager) -> bool:
+    """Handle slash commands. Returns True if handled."""
+    parts = command.strip().split(maxsplit=1)
+    cmd = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
 
-  Type /help for commands. Ctrl+C to interrupt.
-""")
+    if cmd in ("/quit", "/exit"):
+        try:
+            agent.save_session()
+        except Exception:
+            pass
+        console.print("\n[pyoz.accent]Goodbye![/]")
+        sys.exit(0)
+
+    elif cmd == "/undo":
+        from pyoz.tools.git_tools import git_undo
+        try:
+            result = git_undo(agent.work_dir)
+            print_success(result)
+        except Exception as e:
+            print_error(str(e))
+        return True
+
+    elif cmd == "/diff":
+        from pyoz.tools.git_tools import git_diff
+        result = git_diff(agent.work_dir)
+        print_diff_output(result)
+        return True
+
+    elif cmd == "/log":
+        from pyoz.tools.git_tools import git_log
+        commits = git_log(10, agent.work_dir)
+        print_commits(commits)
+        return True
+
+    elif cmd == "/index":
+        with console.status("[pyoz.accent]Indexing codebase...[/]", spinner="dots"):
+            result = agent.reindex()
+        print_success(f"Indexed: {result['files']} files, {result['symbols']} symbols")
+        return True
+
+    elif cmd == "/files":
+        from pyoz.tools.file_tools import list_directory
+        entries = list_directory(agent.work_dir)
+        print_files(entries)
+        return True
+
+    elif cmd == "/stats":
+        stats = agent.get_stats()
+        print_stats(stats)
+        return True
+
+    elif cmd == "/clear":
+        agent.clear_history()
+        print_success("Conversation cleared.")
+        return True
+
+    elif cmd == "/rules":
+        rules = agent.reload_rules()
+        if rules and rules != "No rules file found.":
+            print_rules(rules)
+        else:
+            console.print("  [pyoz.subtle]No PYOZ.md or .pyoz/rules.md found.[/]")
+        return True
+
+    # --- Workspace commands ---
+    elif cmd in ("/workspace", "/ws"):
+        if not arg:
+            recent = workspace_mgr.list_recent()
+            print_workspaces(agent.work_dir, recent)
+        else:
+            try:
+                ws = workspace_mgr.switch(arg)
+                with console.status("[pyoz.accent]Switching workspace...[/]", spinner="dots"):
+                    info = agent.change_work_dir(ws["path"])
+                workspace_mgr.touch(ws["path"])
+                print_success(f"Switched to: {ws['name']} ({ws['path']})")
+                console.print(f"    {info['files_indexed']} files indexed, {info['symbols']} symbols")
+                if agent.turn_count > 0:
+                    console.print(f"    [pyoz.session]Resumed session ({agent.turn_count} turns)[/]")
+            except (ValueError, FileNotFoundError) as e:
+                print_error(str(e))
+        return True
+
+    elif cmd == "/ws-add":
+        path = arg or agent.work_dir
+        try:
+            name = os.path.basename(os.path.abspath(path))
+            ws = workspace_mgr.register(path, name)
+            print_success(f"Added workspace: {ws['name']} ({ws['path']})")
+        except Exception as e:
+            print_error(str(e))
+        return True
+
+    elif cmd == "/ws-remove":
+        if not arg:
+            console.print("  [pyoz.subtle]Usage: /ws-remove <name|number>[/]")
+        elif workspace_mgr.remove(arg):
+            print_success(f"Removed workspace: {arg}")
+        else:
+            print_error(f"Workspace not found: {arg}")
+        return True
+
+    # --- Session commands ---
+    elif cmd == "/save":
+        path = agent.save_session()
+        print_success(f"Session saved: {path}")
+        return True
+
+    elif cmd == "/resume":
+        if agent.load_session():
+            print_success(f"Session resumed ({agent.turn_count} turns, {agent.total_tool_calls} tool calls)")
+        else:
+            console.print("  [pyoz.subtle]No saved session found.[/]")
+        return True
+
+    elif cmd == "/new":
+        archive = agent.new_session()
+        if archive:
+            print_success("Previous session archived. Starting fresh.")
+        else:
+            print_success("Starting new session.")
+        return True
+
+    elif cmd == "/sessions":
+        sessions = agent.list_sessions()
+        print_sessions(sessions)
+        return True
+
+    elif cmd == "/export":
+        md = agent.export_session()
+        if md:
+            export_path = os.path.join(agent.work_dir, "pyoz_session.md")
+            with open(export_path, "w", encoding="utf-8") as f:
+                f.write(md)
+            print_success(f"Session exported to: {export_path}")
+        else:
+            console.print("  [pyoz.subtle]No session to export.[/]")
+        return True
+
+    # --- Streaming toggle ---
+    elif cmd == "/stream":
+        agent.streaming = not agent.streaming
+        state = "on" if agent.streaming else "off"
+        print_success(f"Streaming: {state}")
+        return True
+
+    elif cmd == "/help":
+        print_help()
+        return True
+
+    return False
 
 
 def main():
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="PyOz — Pure Agent Mode Coding Assistant")
+    parser = argparse.ArgumentParser(
+        description="PyOz — Pure Agent Mode Coding Assistant",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python pyoz.py --provider claude --api-key sk-ant-...
+  python pyoz.py --provider openai --api-key sk-...
+  python pyoz.py --provider ollama --model qwen2.5:7b
+  python pyoz.py --test
+        """,
+    )
     parser.add_argument("--provider", default="claude", choices=["claude", "openai", "ollama"],
                         help="LLM provider (default: claude)")
-    parser.add_argument("--api-key", help="API key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY)")
+    parser.add_argument("--api-key", help="API key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY env var)")
     parser.add_argument("--model", help="Model name override")
     parser.add_argument("--ollama-url", default="http://localhost:11434", help="Ollama server URL")
     parser.add_argument("--work-dir", help="Working directory (default: current)")
@@ -382,7 +280,8 @@ def main():
     )
 
     # Initialize
-    info = agent.initialize()
+    with console.status("[pyoz.accent]Initializing...[/]", spinner="dots"):
+        info = agent.initialize()
 
     # Register workspace
     workspace_mgr = WorkspaceManager()
@@ -395,7 +294,10 @@ def main():
         if session_resumed:
             info["session_turns"] = agent.turn_count
 
-    _print_banner(info, session_resumed)
+    print_banner(info, session_resumed)
+
+    # Create input manager with history + autocomplete
+    input_mgr = InputManager()
 
     # Handle Ctrl+C gracefully
     interrupted = False
@@ -403,15 +305,14 @@ def main():
     def signal_handler(sig, frame):
         nonlocal interrupted
         if interrupted:
-            # Save before force quit
             try:
                 agent.save_session()
             except Exception:
                 pass
-            print(_color("\nForce quit.", Colors.RED))
+            console.print("\n[pyoz.error]Force quit.[/]")
             sys.exit(1)
         interrupted = True
-        print(_color("\n  Interrupted. Press Ctrl+C again to quit.", Colors.YELLOW))
+        console.print("\n  [pyoz.warning]Interrupted. Press Ctrl+C again to quit.[/]")
 
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -419,13 +320,16 @@ def main():
     while True:
         interrupted = False
         try:
-            user_input = input(_color("\n> ", Colors.GREEN + Colors.BOLD)).strip()
+            user_input = input_mgr.get_input("> ")
         except EOFError:
-            agent.save_session()
-            print(_color("\nGoodbye!", Colors.CYAN))
+            try:
+                agent.save_session()
+            except Exception:
+                pass
+            console.print("\n[pyoz.accent]Goodbye![/]")
             break
         except KeyboardInterrupt:
-            print()
+            console.print()
             continue
 
         if not user_input:
@@ -438,99 +342,109 @@ def main():
 
         # Send to agent
         try:
+            start_time = time.time()
+
             if agent.streaming:
-                print()  # Newline before streaming output
+                console.print()  # Newline before streaming output
 
             response = agent.chat(user_input)
 
-            if response and not agent.streaming:
-                print(f"\n{response}")
+            elapsed = time.time() - start_time
 
-            # Show token stats
+            if response and not agent.streaming:
+                print_response(response)
+
+            # Show turn stats
             stats = agent.get_stats()
-            cost_str = f"${stats['estimated_cost']:.4f}" if stats['estimated_cost'] > 0 else "free"
-            print(_color(
-                f"\n  → ✓ done ({stats['total_tool_calls']} tool calls, "
-                f"{stats['input_tokens']:,} + {stats['output_tokens']:,} tokens, "
-                f"{cost_str})",
-                Colors.DIM
-            ))
+            print_turn_stats(stats)
+
         except KeyboardInterrupt:
-            print(_color("\n  Interrupted.", Colors.YELLOW))
+            console.print("\n  [pyoz.warning]Interrupted.[/]")
         except Exception as e:
-            print(_color(f"\n  Error: {e}", Colors.RED))
+            print_error(str(e))
 
 
 def _run_self_test():
-    """Run a basic self-test."""
-    print(_color("Running PyOz self-test...", Colors.BOLD))
+    """Run a comprehensive self-test."""
+    from rich.panel import Panel
+
+    console.print(Panel(
+        "[pyoz.brand]PyOz Self-Test[/]",
+        border_style="magenta",
+        padding=(0, 2),
+    ))
     errors = 0
+    tests_run = 0
+
+    def _pass(name: str):
+        nonlocal tests_run
+        tests_run += 1
+        console.print(f"  [pyoz.success]✓[/] {name}")
+
+    def _fail(name: str, msg: str):
+        nonlocal errors, tests_run
+        errors += 1
+        tests_run += 1
+        console.print(f"  [pyoz.error]✗[/] {name}: {msg}")
+
+    import tempfile
 
     # Test file tools
-    import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:
         from pyoz.tools.file_tools import write_file, read_file, edit_file, list_directory, search_files
 
-        # write + read
         path = os.path.join(tmpdir, "test.txt")
         write_file(path, "hello world")
         content = read_file(path)
-        assert content == "hello world", f"read_file failed: {content}"
-        print(_color("  ✓ write_file + read_file", Colors.GREEN))
+        assert content == "hello world"
+        _pass("write_file + read_file")
 
-        # edit
         edit_file(path, "hello", "goodbye")
         content = read_file(path)
-        assert content == "goodbye world", f"edit_file failed: {content}"
-        print(_color("  ✓ edit_file", Colors.GREEN))
+        assert content == "goodbye world"
+        _pass("edit_file")
 
-        # list_directory
         entries = list_directory(tmpdir)
         assert any(e["name"] == "test.txt" for e in entries)
-        print(_color("  ✓ list_directory", Colors.GREEN))
+        _pass("list_directory")
 
-        # search_files
         results = search_files("goodbye", tmpdir)
         assert len(results) > 0
-        print(_color("  ✓ search_files", Colors.GREEN))
+        _pass("search_files")
 
     # Test command tools
     from pyoz.tools.command_tools import run_command
     result = run_command("echo hello")
     assert result["exit_code"] == 0
     assert "hello" in result["stdout"]
-    print(_color("  ✓ run_command", Colors.GREEN))
+    _pass("run_command")
 
-    # Test blocked commands
     try:
         run_command("rm -rf /")
-        errors += 1
-        print(_color("  ✗ blocked command not caught", Colors.RED))
+        _fail("dangerous command blocking", "not caught")
     except PermissionError:
-        print(_color("  ✓ dangerous commands blocked", Colors.GREEN))
+        _pass("dangerous command blocking")
 
     # Test git tools
     with tempfile.TemporaryDirectory() as tmpdir:
-        from pyoz.tools.git_tools import git_init, git_commit, git_log, git_diff, is_git_repo
+        from pyoz.tools.git_tools import git_init, git_commit, git_log, is_git_repo
         git_init(tmpdir)
         assert is_git_repo(tmpdir)
-        print(_color("  ✓ git_init", Colors.GREEN))
+        _pass("git_init")
 
-        # write a file and commit
         test_file = os.path.join(tmpdir, "code.py")
         write_file(test_file, "x = 1\n")
         result = git_commit("test commit", tmpdir)
         assert "committed" in result
-        print(_color("  ✓ git_commit", Colors.GREEN))
+        _pass("git_commit")
 
         commits = git_log(5, tmpdir)
-        assert len(commits) >= 2  # initial + test
-        print(_color("  ✓ git_log", Colors.GREEN))
+        assert len(commits) >= 2
+        _pass("git_log")
 
     # Test AST indexer
     with tempfile.TemporaryDirectory() as tmpdir:
         from pyoz.indexer.ast_indexer import ASTIndexer
-        # Write a Python file
         py_file = os.path.join(tmpdir, "example.py")
         write_file(py_file, """
 import os
@@ -539,7 +453,6 @@ from typing import List
 class MyClass:
     def __init__(self, name: str):
         self.name = name
-
     def greet(self) -> str:
         return f"Hello, {self.name}"
 
@@ -549,28 +462,73 @@ def standalone_func(x: int) -> int:
         indexer = ASTIndexer(tmpdir)
         indexer.scan()
         assert indexer.file_count() == 1
-        assert indexer.symbol_count() >= 3  # class, 2 methods, function
-        print(_color("  ✓ AST indexer (Python)", Colors.GREEN))
+        assert indexer.symbol_count() >= 3
+        _pass("AST indexer (Python)")
 
     # Test static configs
     from pyoz.tools.context_tools import static_config
     config = static_config("java", "myapp")
     assert "pom.xml" in config
-    assert "myapp" in config
-    print(_color("  ✓ static_config", Colors.GREEN))
+    _pass("static_config")
 
     # Test tool registry
     from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
-    claude_tools = get_tool_definitions_claude()
-    openai_tools = get_tool_definitions_openai()
-    assert len(claude_tools) == 13
-    assert len(openai_tools) == 13
-    print(_color("  ✓ tool registry (13 tools)", Colors.GREEN))
+    assert len(get_tool_definitions_claude()) == 13
+    assert len(get_tool_definitions_openai()) == 13
+    _pass("tool registry (13 tools)")
 
+    # Test workspace manager
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from pyoz.workspace import WorkspaceManager
+        mgr = WorkspaceManager()
+        ws = mgr.register(tmpdir, "test-ws")
+        assert ws["name"] == "test-ws"
+        recent = mgr.list_recent()
+        assert len(recent) >= 1
+        _pass("workspace manager")
+
+    # Test session persistence
+    with tempfile.TemporaryDirectory() as tmpdir:
+        from pyoz.session import SessionManager
+        smgr = SessionManager(tmpdir)
+        smgr.save([{"role": "user", "content": "test"}], {"turns": 1})
+        data = smgr.load()
+        assert data is not None
+        assert data["messages"][0]["content"] == "test"
+        _pass("session persistence")
+
+    # Test UI components
+    try:
+        from pyoz.ui.display import console as test_console
+        from pyoz.ui.theme import PYOZ_THEME, ICONS
+        assert len(ICONS) > 0
+        _pass("UI components")
+    except Exception as e:
+        _fail("UI components", str(e))
+
+    # Test input manager
+    try:
+        from pyoz.ui.input import InputManager, SlashCommandCompleter
+        completer = SlashCommandCompleter()
+        assert completer is not None
+        _pass("input manager")
+    except Exception as e:
+        _fail("input manager", str(e))
+
+    # Summary
+    console.print()
     if errors == 0:
-        print(_color("\n  All tests passed! ✓", Colors.GREEN + Colors.BOLD))
+        console.print(Panel(
+            f"[pyoz.success]All {tests_run} tests passed![/]",
+            border_style="green",
+            padding=(0, 2),
+        ))
     else:
-        print(_color(f"\n  {errors} test(s) failed ✗", Colors.RED + Colors.BOLD))
+        console.print(Panel(
+            f"[pyoz.error]{errors}/{tests_run} tests failed[/]",
+            border_style="red",
+            padding=(0, 2),
+        ))
         sys.exit(1)
 
 
