@@ -39,6 +39,35 @@ from pyoz.indexer.ast_indexer import ASTIndexer
 
 MAX_TOOL_CALLS_PER_TURN = 50
 
+# Keywords that suggest a task needs planning (creation, setup, new project)
+_PLANNING_KEYWORDS = [
+    "create", "build", "make", "setup", "set up", "scaffold", "generate",
+    "new project", "new app", "new application", "bootstrap", "init",
+    "implement", "develop", "design", "architect",
+]
+
+PLANNING_PROMPT = """You are a planning assistant. The user has given a task that involves creating
+something new. Your ONLY job is to identify ambiguous technical choices and ask about them.
+
+Analyze the user's request and identify choices that are NOT specified:
+- Database type (SQLite, PostgreSQL, MySQL, MongoDB, etc.)
+- Framework or library
+- Build tool (Maven, Gradle, npm, etc.)
+- Project structure (monolith, microservice, etc.)
+- Architecture patterns
+- Any other significant technical decision
+
+Rules:
+1. If ALL choices are clearly specified or there's only one reasonable option, respond with:
+   PLAN_READY: <one-line summary of what you'll build>
+2. If there ARE ambiguous choices, respond with:
+   NEEDS_INPUT: <brief explanation>
+   Then call the ask_user tool for EACH ambiguous choice (max 3 questions).
+3. Do NOT ask about trivial things (variable names, file names, etc.)
+4. Do NOT ask if the task is completely clear (e.g. "fix the bug in line 5")
+5. Keep questions concise. Always suggest a recommended option first.
+"""
+
 
 def _load_rules(work_dir: str) -> str:
     """Load rules from PYOZ.md or .pyoz/rules.md."""
@@ -78,8 +107,11 @@ IMPORTANT BEHAVIORS:
    Never use mkdir -p (fails on Windows).
 5. When editing files, use edit_file for small targeted changes.
    Use write_file only when creating new files or rewriting entirely.
-6. Before creating a project, briefly tell the user your plan.
-   Don't ask for confirmation unless the request is ambiguous.
+6. Before creating a project, use ask_user to clarify ambiguous
+   technical choices (database, framework, build tool, etc.).
+   If the user has already specified everything, skip asking.
+   During execution, use ask_user if you encounter a decision
+   that could go multiple ways.
 
 TOOL SELECTION GUIDE:
 - package_manager: Install/uninstall/search packages. Auto-detects the
@@ -132,7 +164,12 @@ TOOL SELECTION GUIDE:
 - platform_info: Check current OS and shell. Use when you need to decide
   between platform-specific approaches.
 - codebase_index: Get AST summary of the codebase. Use at start of work
-  to understand project structure before making changes."""
+  to understand project structure before making changes.
+- ask_user: Ask the user a clarifying question when facing ambiguous
+  technical decisions (which database, framework, architecture, etc.).
+  Present 2-4 concrete options with the recommended one first. Do NOT use
+  for trivial or obvious choices. Do NOT use when the user already specified
+  their preference."""
 
     # Platform-specific instructions
     prompt += f"\n\nPLATFORM: {shell_info['platform']} (shell: {shell_info['name']})"
@@ -205,6 +242,7 @@ class Agent:
         on_tool_call: Callable[[str, dict, str], None] | None = None,
         on_diff: Callable[[str, str, str], None] | None = None,
         on_stream_token: Callable[[str], None] | None = None,
+        on_ask_user: Callable[[str, list[str]], str] | None = None,
         streaming: bool = False,
     ):
         self.provider = provider
@@ -212,6 +250,7 @@ class Agent:
         self.on_tool_call = on_tool_call  # callback(tool_name, args, result)
         self.on_diff = on_diff  # callback(path, old_text, new_text)
         self.on_stream_token = on_stream_token  # callback(text_chunk)
+        self.on_ask_user = on_ask_user  # callback(question, options) -> user's answer
         self.streaming = streaming
 
         # Conversation history
@@ -252,17 +291,121 @@ class Agent:
             "model": self.provider.model_name,
         }
 
+    def _needs_planning(self, message: str) -> bool:
+        """Check if a user message likely needs a planning phase."""
+        msg_lower = message.lower()
+        return any(kw in msg_lower for kw in _PLANNING_KEYWORDS)
+
+    def _run_planning_phase(self, user_message: str) -> str | None:
+        """Run a planning phase to identify ambiguous choices.
+
+        Returns the enriched user message with clarifications,
+        or None if no planning was needed.
+        """
+        if not self.on_ask_user:
+            return None  # No way to ask the user, skip planning
+
+        # Use a lightweight LLM call with only the ask_user tool
+        planning_messages = [
+            {"role": "user", "content": user_message},
+        ]
+
+        # Only give the ask_user tool during planning
+        if self.provider.provider_name == "claude":
+            ask_tool = [{
+                "name": "ask_user",
+                "description": (
+                    "Ask the user a clarifying question. Present 2-4 concrete options "
+                    "with the recommended option first."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string", "description": "Concise question"},
+                        "options": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "2-4 options, recommended first",
+                        },
+                    },
+                    "required": ["question", "options"],
+                },
+            }]
+        else:
+            ask_tool = [{
+                "type": "function",
+                "function": {
+                    "name": "ask_user",
+                    "description": (
+                        "Ask the user a clarifying question. Present 2-4 concrete options "
+                        "with the recommended option first."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string", "description": "Concise question"},
+                            "options": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "2-4 options, recommended first",
+                            },
+                        },
+                        "required": ["question", "options"],
+                    },
+                },
+            }]
+
+        response = self.provider.chat(planning_messages, ask_tool, PLANNING_PROMPT)
+        self.total_input_tokens += response.input_tokens
+        self.total_output_tokens += response.output_tokens
+
+        # If PLAN_READY — no clarification needed
+        if response.text and "PLAN_READY:" in response.text:
+            return None
+
+        # If tool calls — ask the user each question
+        if not response.tool_calls:
+            return None
+
+        clarifications = []
+        for tc in response.tool_calls:
+            if tc.name == "ask_user":
+                question = tc.arguments.get("question", "")
+                options = tc.arguments.get("options", [])
+                if question and options:
+                    answer = self.on_ask_user(question, options)
+                    clarifications.append(f"{question} → {answer}")
+
+        if not clarifications:
+            return None
+
+        # Build enriched message with user's choices
+        enriched = user_message + "\n\nUser clarifications:\n"
+        for c in clarifications:
+            enriched += f"- {c}\n"
+
+        return enriched
+
     def chat(self, user_message: str) -> str:
         """Process a user message and return the final text response.
 
         This is the core agent loop:
-        1. Add user message to history
-        2. Send to LLM with tools
-        3. If LLM returns tool calls → execute them, feed results back
-        4. Loop until LLM returns text (no tool calls) or max iterations
+        1. (Optional) Run planning phase for ambiguous creation tasks
+        2. Add user message to history
+        3. Send to LLM with tools
+        4. If LLM returns tool calls → execute them, feed results back
+        5. Loop until LLM returns text (no tool calls) or max iterations
         """
         self.turn_count += 1
-        self.messages.append({"role": "user", "content": user_message})
+
+        # Planning phase: detect ambiguous tasks and ask clarifying questions
+        actual_message = user_message
+        if self._needs_planning(user_message):
+            enriched = self._run_planning_phase(user_message)
+            if enriched:
+                actual_message = enriched
+
+        self.messages.append({"role": "user", "content": actual_message})
 
         # Manage context window — summarize old messages if too many
         self._manage_context()
@@ -613,6 +756,14 @@ class Agent:
                     args=args.get("args", ""),
                     cwd=self.work_dir,
                 )
+
+            elif name == "ask_user":
+                question = args.get("question", "What would you like to do?")
+                options = args.get("options", [])
+                if self.on_ask_user:
+                    answer = self.on_ask_user(question, options)
+                    return f"User answered: {answer}"
+                return "No user interaction available. Make a reasonable default choice and proceed."
 
             elif name == "cicd_tool":
                 return cicd_tool(

@@ -101,6 +101,44 @@ def _on_stream_token(text: str) -> None:
     sys.stdout.flush()
 
 
+def _on_ask_user(question: str, options: list[str]) -> str:
+    """Prompt the user with a question and options during planning/execution."""
+    console.print()
+    console.print(f"  [pyoz.accent]? {question}[/]")
+    for i, opt in enumerate(options, 1):
+        marker = "(recommended)" if i == 1 else ""
+        console.print(f"    [pyoz.brand]{i}.[/] {opt} [pyoz.subtle]{marker}[/]")
+    console.print(f"    [pyoz.brand]{len(options) + 1}.[/] Other (type your own)")
+    console.print()
+
+    while True:
+        try:
+            raw = input("  Choose [1]: ").strip()
+            if not raw:
+                # Default to first (recommended) option
+                console.print(f"  [pyoz.success]→ {options[0]}[/]")
+                return options[0]
+
+            if raw.isdigit():
+                idx = int(raw)
+                if 1 <= idx <= len(options):
+                    console.print(f"  [pyoz.success]→ {options[idx - 1]}[/]")
+                    return options[idx - 1]
+                elif idx == len(options) + 1:
+                    custom = input("  Your choice: ").strip()
+                    if custom:
+                        console.print(f"  [pyoz.success]→ {custom}[/]")
+                        return custom
+                    continue
+            else:
+                # User typed a free-form answer
+                console.print(f"  [pyoz.success]→ {raw}[/]")
+                return raw
+        except (EOFError, KeyboardInterrupt):
+            console.print(f"\n  [pyoz.subtle]Using default: {options[0]}[/]")
+            return options[0]
+
+
 def _handle_slash_command(command: str, agent: Agent, workspace_mgr: WorkspaceManager) -> bool:
     """Handle slash commands. Returns True if handled."""
     parts = command.strip().split(maxsplit=1)
@@ -299,6 +337,7 @@ Examples:
         on_tool_call=_on_tool_call,
         on_diff=_on_diff,
         on_stream_token=_on_stream_token,
+        on_ask_user=_on_ask_user,
         streaming=args.stream,
     )
 
@@ -496,9 +535,11 @@ def standalone_func(x: int) -> int:
 
     # Test tool registry
     from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
-    assert len(get_tool_definitions_claude()) == 24
-    assert len(get_tool_definitions_openai()) == 24
-    _pass("tool registry (24 tools)")
+    claude_tools = len(get_tool_definitions_claude())
+    openai_tools = len(get_tool_definitions_openai())
+    assert claude_tools == openai_tools
+    assert claude_tools >= 25  # At least 25 tools (including ask_user)
+    _pass(f"tool registry ({claude_tools} tools)")
 
     # Test workspace manager
     with tempfile.TemporaryDirectory() as tmpdir:

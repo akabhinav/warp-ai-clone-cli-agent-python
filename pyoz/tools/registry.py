@@ -604,6 +604,31 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["action"],
         },
     },
+    # --- User Interaction ---
+    {
+        "name": "ask_user",
+        "description": (
+            "Ask the user a clarifying question before proceeding. Use this when the request "
+            "is ambiguous and you need to know: which database, framework, library, architecture, "
+            "build tool, or other technical choice to make. Present 2-4 concrete options with a "
+            "recommended default. Do NOT use this for simple/obvious tasks."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question to ask the user (be concise and specific)",
+                },
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "2-4 concrete options for the user to choose from. Put the recommended option first.",
+                },
+            },
+            "required": ["question", "options"],
+        },
+    },
     # --- CI/CD ---
     {
         "name": "cicd_tool",
