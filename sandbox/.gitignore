@@ -1,0 +1,6 @@
+# Never commit secrets or environment files
+.env
+secrets/*.txt
+secrets/*.json
+!secrets/.gitignore
+!secrets/README.md

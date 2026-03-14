@@ -51,23 +51,67 @@ def _tcp_check(host: str, port: int, timeout: int = 3) -> bool:
         return False
 
 
-def _detect_sandbox_services() -> dict[str, Any]:
-    """Detect services available in the Docker sandbox via env vars and TCP checks."""
+def _read_secret_file(path: str) -> str:
+    """Read a Docker secret from /run/secrets/ (file-based secrets)."""
+    try:
+        with open(path, "r") as f:
+            return f.read().strip()
+    except (FileNotFoundError, PermissionError):
+        return ""
+
+
+def _load_db_credentials() -> dict[str, str]:
+    """Load database credentials from Docker secrets JSON file."""
+    creds_file = os.environ.get("DB_CREDENTIALS_FILE", "/run/secrets/db_credentials")
+    try:
+        with open(creds_file, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, PermissionError, json.JSONDecodeError):
+        # Fall back to environment variables
+        return {}
+
+
+def _get_credential(creds: dict[str, str], secret_key: str, env_key: str, default: str = "") -> str:
+    """Get a credential from secrets file first, then env var fallback."""
+    return creds.get(secret_key, "") or os.environ.get(env_key, default)
+
+
+def _mask_password(password: str) -> str:
+    """Mask a password for safe display. Shows first 2 chars + ****."""
+    if not password:
+        return "(not set)"
+    if len(password) <= 4:
+        return "****"
+    return password[:2] + "****"
+
+
+def _detect_sandbox_services(mask_secrets: bool = True) -> dict[str, Any]:
+    """Detect services available in the Docker sandbox via env vars and TCP checks.
+
+    Args:
+        mask_secrets: If True, passwords are masked in output (safe for display).
+                      If False, returns raw passwords (for internal agent use only).
+    """
     services: dict[str, Any] = {}
+    creds = _load_db_credentials()
+
+    _mask = _mask_password if mask_secrets else (lambda x: x)
 
     # PostgreSQL
     pg_host = os.environ.get("POSTGRES_HOST", "")
     if pg_host:
         port = int(os.environ.get("POSTGRES_PORT", 5432))
+        pg_user = _get_credential(creds, "postgres_user", "POSTGRES_USER", "pyoz")
+        pg_pass = _get_credential(creds, "postgres_password", "POSTGRES_PASSWORD", "")
         services["postgres"] = {
             "name": "PostgreSQL",
             "engine_key": "postgres",
             "host": pg_host,
             "port": port,
-            "user": os.environ.get("POSTGRES_USER", "pyoz"),
-            "password": os.environ.get("POSTGRES_PASSWORD", ""),
+            "user": pg_user,
+            "password": _mask(pg_pass),
             "database": os.environ.get("POSTGRES_DB", "app_db"),
-            "connection_string": os.environ.get("DATABASE_URL", ""),
+            "connection_hint": f"Use env: POSTGRES_HOST, read password from /run/secrets/db_credentials",
             "running": _tcp_check(pg_host, port),
         }
 
@@ -75,14 +119,17 @@ def _detect_sandbox_services() -> dict[str, Any]:
     mysql_host = os.environ.get("MYSQL_HOST", "")
     if mysql_host:
         port = int(os.environ.get("MYSQL_PORT", 3306))
+        my_user = _get_credential(creds, "mysql_user", "MYSQL_USER", "pyoz")
+        my_pass = _get_credential(creds, "mysql_password", "MYSQL_PASSWORD", "")
         services["mysql"] = {
             "name": "MySQL",
             "engine_key": "mysql",
             "host": mysql_host,
             "port": port,
-            "user": os.environ.get("MYSQL_USER", "pyoz"),
-            "password": os.environ.get("MYSQL_PASSWORD", ""),
+            "user": my_user,
+            "password": _mask(my_pass),
             "database": os.environ.get("MYSQL_DATABASE", "app_db"),
+            "connection_hint": "Use env: MYSQL_HOST, read password from /run/secrets/db_credentials",
             "running": _tcp_check(mysql_host, port),
         }
 
@@ -90,15 +137,17 @@ def _detect_sandbox_services() -> dict[str, Any]:
     mongo_host = os.environ.get("MONGO_HOST", "")
     if mongo_host:
         port = int(os.environ.get("MONGO_PORT", 27017))
+        mo_user = _get_credential(creds, "mongo_user", "MONGO_USER", "pyoz")
+        mo_pass = _get_credential(creds, "mongo_password", "MONGO_PASSWORD", "")
         services["mongodb"] = {
             "name": "MongoDB",
             "engine_key": "mongodb",
             "host": mongo_host,
             "port": port,
-            "user": os.environ.get("MONGO_USER", "pyoz"),
-            "password": os.environ.get("MONGO_PASSWORD", ""),
+            "user": mo_user,
+            "password": _mask(mo_pass),
             "database": os.environ.get("MONGO_DB", "app_db"),
-            "connection_string": os.environ.get("MONGO_URL", ""),
+            "connection_hint": "Use env: MONGO_HOST, read password from /run/secrets/db_credentials",
             "running": _tcp_check(mongo_host, port),
         }
 
@@ -106,13 +155,13 @@ def _detect_sandbox_services() -> dict[str, Any]:
     redis_host = os.environ.get("REDIS_HOST", "")
     if redis_host:
         port = int(os.environ.get("REDIS_PORT", 6379))
+        redis_pass = _get_credential(creds, "redis_password", "REDIS_PASSWORD", "")
         services["redis"] = {
             "name": "Redis",
             "engine_key": "redis",
             "host": redis_host,
             "port": port,
-            "password": os.environ.get("REDIS_PASSWORD", ""),
-            "connection_string": os.environ.get("REDIS_URL", ""),
+            "password": _mask(redis_pass) if redis_pass else "(no auth)",
             "running": _tcp_check(redis_host, port),
         }
 
@@ -135,13 +184,15 @@ def _detect_sandbox_services() -> dict[str, Any]:
     rabbitmq_host = os.environ.get("RABBITMQ_HOST", "")
     if rabbitmq_host:
         port = int(os.environ.get("RABBITMQ_PORT", 5672))
+        rb_user = _get_credential(creds, "rabbitmq_user", "RABBITMQ_USER", "pyoz")
+        rb_pass = _get_credential(creds, "rabbitmq_password", "RABBITMQ_PASSWORD", "")
         services["rabbitmq"] = {
             "name": "RabbitMQ",
             "host": rabbitmq_host,
             "port": port,
-            "user": os.environ.get("RABBITMQ_USER", "pyoz"),
-            "password": os.environ.get("RABBITMQ_PASSWORD", ""),
-            "connection_string": os.environ.get("RABBITMQ_URL", ""),
+            "user": rb_user,
+            "password": _mask(rb_pass),
+            "connection_hint": "Use env: RABBITMQ_HOST, read password from /run/secrets/db_credentials",
             "running": _tcp_check(rabbitmq_host, port),
         }
 
@@ -163,12 +214,14 @@ def _detect_sandbox_services() -> dict[str, Any]:
         parts = minio_endpoint.split(":")
         host = parts[0]
         port = int(parts[1]) if len(parts) > 1 else 9000
+        mi_key = _get_credential(creds, "minio_access_key", "MINIO_ACCESS_KEY", "")
+        mi_secret = _get_credential(creds, "minio_secret_key", "MINIO_SECRET_KEY", "")
         services["minio"] = {
             "name": "MinIO (S3-compatible)",
             "host": host,
             "port": port,
-            "access_key": os.environ.get("MINIO_ACCESS_KEY", ""),
-            "secret_key": os.environ.get("MINIO_SECRET_KEY", ""),
+            "access_key": mi_key,
+            "secret_key": _mask(mi_secret),
             "running": _tcp_check(host, port),
         }
 

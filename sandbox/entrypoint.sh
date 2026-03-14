@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
-# PyOz Sandbox Entrypoint
-# Waits for services, prints connection summary, starts shell or pyoz.
+# PyOz Sandbox Entrypoint (Security Hardened)
+# - Reads API keys from Docker secrets (files), not env vars
+# - Waits for services, prints connection summary (passwords masked)
 # ============================================================================
 
 set -e
@@ -16,9 +17,49 @@ BOLD='\033[1m'
 echo -e "${CYAN}${BOLD}"
 echo "  ╔══════════════════════════════════════════════╗"
 echo "  ║       PyOz Enterprise Sandbox                ║"
-echo "  ║       All services pre-configured            ║"
+echo "  ║       Security Hardened                      ║"
 echo "  ╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
+
+# ── Load secrets from files ──────────────────────────────────
+# Docker secrets are mounted at /run/secrets/<name>
+# We export them as env vars for the agent process only (not logged)
+
+load_secret() {
+    local env_name="$1"
+    local file_path="$2"
+
+    if [ -f "$file_path" ] && [ -s "$file_path" ]; then
+        export "$env_name"="$(cat "$file_path")"
+        echo -e "  ${GREEN}✓${NC} Loaded secret: $env_name"
+    fi
+}
+
+echo -e "${BOLD}Loading secrets...${NC}"
+
+# API Keys from secret files
+load_secret "ANTHROPIC_API_KEY" "/run/secrets/anthropic_api_key"
+load_secret "OPENAI_API_KEY"    "/run/secrets/openai_api_key"
+
+# Database credentials from JSON secret file
+if [ -f "/run/secrets/db_credentials" ]; then
+    # Parse JSON credentials and export as env vars
+    DB_CREDS="/run/secrets/db_credentials"
+
+    # Use python to parse JSON safely (jq may not be available in all builds)
+    if command -v python3 &>/dev/null; then
+        eval "$(python3 -c "
+import json, sys
+with open('$DB_CREDS') as f:
+    creds = json.load(f)
+for key, val in creds.items():
+    env_key = key.upper()
+    print(f'export {env_key}=\"{val}\"')
+" 2>/dev/null)" && echo -e "  ${GREEN}✓${NC} Loaded database credentials from secrets"
+    fi
+fi
+
+echo ""
 
 # ── Wait for critical services ───────────────────────────────
 
@@ -37,7 +78,7 @@ wait_for_service() {
         retry=$((retry + 1))
         sleep 1
     done
-    echo -e "  ${YELLOW}⚠${NC} $name ($host:$port) — not available (may not be started)"
+    echo -e "  ${YELLOW}⚠${NC} $name ($host:$port) — not available"
     return 1
 }
 
@@ -48,7 +89,7 @@ echo ""
 wait_for_service "PostgreSQL" "${POSTGRES_HOST:-postgres}" "${POSTGRES_PORT:-5432}" 30 || true
 wait_for_service "Redis"      "${REDIS_HOST:-redis}"       "${REDIS_PORT:-6379}"    15 || true
 
-# Check optional services (only if env vars hint they should exist)
+# Check optional services
 [ -n "$MYSQL_HOST" ]         && wait_for_service "MySQL"          "$MYSQL_HOST"         "${MYSQL_PORT:-3306}"  30 || true
 [ -n "$MONGO_HOST" ]         && wait_for_service "MongoDB"        "$MONGO_HOST"         "${MONGO_PORT:-27017}" 30 || true
 [ -n "$KAFKA_BOOTSTRAP_SERVERS" ] && wait_for_service "Kafka"     "kafka"               "9092"                 30 || true
@@ -58,14 +99,15 @@ wait_for_service "Redis"      "${REDIS_HOST:-redis}"       "${REDIS_PORT:-6379}"
 
 echo ""
 
-# ── Print connection summary ─────────────────────────────────
+# ── Print connection summary (passwords MASKED) ─────────────
 
-echo -e "${BOLD}Connection credentials:${NC}"
-echo -e "  ${CYAN}PostgreSQL${NC}  postgresql://${POSTGRES_USER:-pyoz}:****@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-app_db}"
-echo -e "  ${CYAN}MySQL${NC}       mysql://${MYSQL_USER:-pyoz}:****@${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/${MYSQL_DATABASE:-app_db}"
-echo -e "  ${CYAN}MongoDB${NC}     mongodb://${MONGO_USER:-pyoz}:****@${MONGO_HOST:-mongodb}:${MONGO_PORT:-27017}/${MONGO_DB:-app_db}"
-echo -e "  ${CYAN}Redis${NC}       redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}"
+echo -e "${BOLD}Connection info (passwords masked):${NC}"
+echo -e "  ${CYAN}PostgreSQL${NC}  ${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-app_db}  user=${POSTGRES_USER:-pyoz}"
+echo -e "  ${CYAN}MySQL${NC}       ${MYSQL_HOST:-mysql}:${MYSQL_PORT:-3306}/${MYSQL_DATABASE:-app_db}  user=${MYSQL_USER:-pyoz}"
+echo -e "  ${CYAN}MongoDB${NC}     ${MONGO_HOST:-mongodb}:${MONGO_PORT:-27017}/${MONGO_DB:-app_db}  user=${MONGO_USER:-pyoz}"
+echo -e "  ${CYAN}Redis${NC}       ${REDIS_HOST:-redis}:${REDIS_PORT:-6379}"
 echo -e "  ${CYAN}Kafka${NC}       ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}"
+echo -e "  Passwords loaded from: /run/secrets/db_credentials"
 echo ""
 
 # ── Print available runtimes ─────────────────────────────────
@@ -84,7 +126,13 @@ echo ""
 # ── Check API key ────────────────────────────────────────────
 
 if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
-    echo -e "${YELLOW}⚠  No LLM API key set. Add ANTHROPIC_API_KEY or OPENAI_API_KEY to .env${NC}"
+    echo -e "${RED}✗  No LLM API key found!${NC}"
+    echo -e "  Add your key to: sandbox/secrets/anthropic_api_key.txt"
+    echo -e "  Then restart: docker compose restart agent"
+    echo ""
+else
+    [ -n "$ANTHROPIC_API_KEY" ] && echo -e "  ${GREEN}✓${NC} Anthropic API key loaded"
+    [ -n "$OPENAI_API_KEY" ]    && echo -e "  ${GREEN}✓${NC} OpenAI API key loaded"
     echo ""
 fi
 
