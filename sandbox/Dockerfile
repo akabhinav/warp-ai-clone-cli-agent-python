@@ -46,8 +46,9 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y && \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN python3 -m pip install --break-system-packages --upgrade pip setuptools wheel
+# Install pip into Python 3.12 (system pip belongs to the distro Python;
+# --ignore-installed avoids the "Cannot uninstall pip, RECORD not found" error)
+RUN python3 -m pip install --break-system-packages --ignore-installed pip setuptools wheel
 
 # ── Node.js 22 LTS ───────────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
