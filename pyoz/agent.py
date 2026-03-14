@@ -30,6 +30,7 @@ from pyoz.tools.service_tools import service_manager
 from pyoz.tools.http_tools import http_request
 from pyoz.tools.msbuild_tools import msbuild_tool
 from pyoz.tools.schedule_tools import schedule_task
+from pyoz.tools.kubernetes_tools import kubernetes_tool
 from pyoz.tools.registry import get_tool_definitions_claude, get_tool_definitions_openai
 from pyoz.indexer.ast_indexer import ASTIndexer
 
@@ -108,6 +109,10 @@ TOOL SELECTION GUIDE:
 - schedule_task: Create recurring jobs. On Unix uses cron (5-field expressions).
   On Windows uses Task Scheduler (daily/weekly/hourly/startup/logon schedules).
   Use action="list" to see existing tasks before creating new ones.
+- kubernetes_tool: Full Kubernetes lifecycle. Use for deploying apps, managing
+  pods/deployments/services, viewing logs, scaling, rollouts/rollbacks, applying
+  manifests, Helm charts, Kustomize builds, ConfigMaps, Secrets, and node
+  management. Always prefer this over run_command with kubectl/helm commands.
 - platform_info: Check current OS and shell. Use when you need to decide
   between platform-specific approaches.
 - codebase_index: Get AST summary of the codebase. Use at start of work
@@ -558,6 +563,15 @@ class Agent:
                     command=args.get("command", ""),
                     schedule=args.get("schedule", ""),
                     description=args.get("description", ""),
+                )
+
+            elif name == "kubernetes_tool":
+                return kubernetes_tool(
+                    action=args["action"],
+                    target=args.get("target", ""),
+                    namespace=args.get("namespace", ""),
+                    args=args.get("args", ""),
+                    cwd=self.work_dir,
                 )
 
             else:

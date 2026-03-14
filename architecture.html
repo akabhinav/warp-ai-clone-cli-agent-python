@@ -787,7 +787,7 @@
     <p>A pure agent-mode coding assistant with 24 cross-platform tools, multi-provider LLM support, and an agentic tool-calling loop.</p>
     <div class="hero-stats">
       <div class="hero-stat">
-        <div class="hero-stat-value">24</div>
+        <div class="hero-stat-value">25</div>
         <div class="hero-stat-label">Tools</div>
       </div>
       <div class="hero-stat">
@@ -949,6 +949,7 @@
           <span class="layer-chip c-amber">Context (2)</span>
           <span class="layer-chip c-amber">System (5)</span>
           <span class="layer-chip c-amber">Cloud (6)</span>
+          <span class="layer-chip c-amber">K8s &amp; Helm (1)</span>
         </div>
       </div>
 
@@ -1163,6 +1164,30 @@
         </div>
       </div>
 
+      <!-- Kubernetes -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-icon" style="background:rgba(96,165,250,0.12); color:var(--blue);">&#9784;</div>
+          <div class="card-title-group">
+            <div class="card-title">Kubernetes &amp; Helm</div>
+            <div class="card-file">pyoz/tools/kubernetes_tools.py</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="card-desc">Enterprise-grade Kubernetes lifecycle management. 50+ actions covering cluster info, namespace management, workload CRUD, deployment rollouts/rollbacks, pod operations (logs, exec, describe), ConfigMaps &amp; Secrets, Helm chart install/upgrade/uninstall, Kustomize builds, node cordon/drain/taint, resource metrics, and HPA/PVC management. Namespace-aware with --all-namespaces support.</div>
+          <ul class="card-list">
+            <li>kubernetes_tool()</li>
+            <li>apply / delete</li>
+            <li>scale / set-image</li>
+            <li>rollout-*</li>
+            <li>helm-*</li>
+            <li>kustomize</li>
+            <li>logs / exec</li>
+            <li>cordon / drain</li>
+          </ul>
+        </div>
+      </div>
+
       <!-- Command Tools -->
       <div class="card">
         <div class="card-header">
@@ -1191,8 +1216,8 @@
   <!-- ════════════════════ ALL 24 TOOLS ════════════════════ -->
   <section class="section">
     <div class="section-label">Tool System</div>
-    <div class="section-title">All 24 Tools</div>
-    <div class="section-desc">Five categories of tools the LLM can call autonomously. The agent's system prompt includes a selection guide telling the LLM when to prefer each tool.</div>
+    <div class="section-title">All 25 Tools</div>
+    <div class="section-desc">Six categories of tools the LLM can call autonomously. The agent's system prompt includes a selection guide telling the LLM when to prefer each tool.</div>
 
     <div class="tool-grid">
       <!-- File Tools -->
@@ -1362,6 +1387,14 @@
         <div class="tool-desc">Scheduled tasks. Cron jobs on Unix, Task Scheduler on Windows. Create, delete, enable/disable.</div>
         <div class="tool-actions"><span class="tool-action">create</span><span class="tool-action">delete</span><span class="tool-action">enable</span><span class="tool-action">disable</span><span class="tool-action">list</span><span class="tool-action">run</span></div>
       </div>
+
+      <!-- Kubernetes -->
+      <div class="tool-card t-blue">
+        <div class="tool-tier" style="color:var(--blue); background:rgba(96,165,250,0.1);">K8s</div>
+        <div class="tool-name">kubernetes_tool</div>
+        <div class="tool-desc">Full Kubernetes &amp; Helm lifecycle. Deploy apps, manage pods/deployments/services, scale, rollout, apply manifests, Helm charts, Kustomize.</div>
+        <div class="tool-actions"><span class="tool-action">apply</span><span class="tool-action">scale</span><span class="tool-action">rollout</span><span class="tool-action">helm-install</span><span class="tool-action">logs</span><span class="tool-action">get-pods</span><span class="tool-action">describe</span><span class="tool-action">exec</span></div>
+      </div>
     </div>
   </section>
 
@@ -1523,6 +1556,7 @@
 <span class="indent2"><span class="file">http_tools.py</span>    <span class="note">&#8594; HTTP client (GET/POST/PUT/DELETE + auth)</span></span>
 <span class="indent2"><span class="file">msbuild_tools.py</span> <span class="note">&#8594; Visual Studio .sln &amp; .csproj management</span></span>
 <span class="indent2"><span class="file">schedule_tools.py</span> <span class="note">&#8594; Cron (Unix) &amp; Task Scheduler (Windows)</span></span>
+<span class="indent2"><span class="hl">kubernetes_tools.py</span> <span class="note">&#8594; kubectl &amp; Helm: deploy, scale, rollout, logs (50+ actions)</span></span>
 <span class="indent"></span>
 <span class="indent"><span class="dir">indexer/</span></span>
 <span class="indent2"><span class="file">ast_indexer.py</span>   <span class="note">&#8594; Multi-language AST parsing &amp; symbol extraction</span></span>
@@ -1548,7 +1582,7 @@
 
   <!-- ════════════════════ FOOTER ════════════════════ -->
   <footer class="footer">
-    <p>PyOz Architecture &mdash; 24 tools &middot; 3 providers &middot; 3 platforms &middot; 312 tests</p>
+    <p>PyOz Architecture &mdash; 25 tools &middot; 3 providers &middot; 3 platforms &middot; Kubernetes-ready</p>
   </footer>
 
 </div>

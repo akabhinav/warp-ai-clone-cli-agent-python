@@ -460,6 +460,51 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["action"],
         },
     },
+    # --- Kubernetes & Helm ---
+    {
+        "name": "kubernetes_tool",
+        "description": (
+            "Kubernetes cluster and workload management: deploy apps, manage pods/deployments/"
+            "services, view logs, scale replicas, rollout/rollback, apply manifests, Helm charts, "
+            "Kustomize, ConfigMaps, Secrets, node management. Enterprise-grade k8s lifecycle. "
+            "Requires kubectl (and optionally helm) installed."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": (
+                        "Action — Cluster: cluster-info, get-contexts, use-context, get-nodes, top-nodes; "
+                        "Namespaces: get-namespaces, create-namespace, delete-namespace; "
+                        "Workloads: get-pods, get-deployments, get-services, get-statefulsets, get-daemonsets, "
+                        "get-jobs, get-cronjobs, get-ingresses, get-all; "
+                        "Deploy: apply, delete, create-deployment, scale, set-image, "
+                        "rollout-status, rollout-history, rollout-undo, rollout-restart; "
+                        "Pod Ops: logs, exec, describe, port-forward, get-events; "
+                        "Config: get-configmaps, get-secrets, create-configmap, create-secret; "
+                        "Helm: helm-install, helm-upgrade, helm-uninstall, helm-list, "
+                        "helm-repo-add, helm-repo-update, helm-search, helm-status; "
+                        "Advanced: kustomize, top-pods, get-pvc, get-hpa, cordon, uncordon, drain, "
+                        "taint, label, annotate"
+                    ),
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Resource name, manifest file path, Helm release/chart name, or node name",
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "Kubernetes namespace (default: current context, 'all' for --all-namespaces)",
+                },
+                "args": {
+                    "type": "string",
+                    "description": "Additional flags (e.g. '--replicas=3', '-l app=web', '-f values.yaml', '--image=nginx:latest')",
+                },
+            },
+            "required": ["action"],
+        },
+    },
 ]
 
 
