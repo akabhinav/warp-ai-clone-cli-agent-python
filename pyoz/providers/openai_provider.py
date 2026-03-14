@@ -2,11 +2,12 @@
 
 import json
 import time
+from collections.abc import Generator
 from typing import Any
 
 import httpx
 
-from pyoz.providers.base import BaseLLMProvider, LLMResponse, ToolCall
+from pyoz.providers.base import BaseLLMProvider, LLMResponse, StreamEvent, ToolCall
 
 DEFAULT_MODEL = "gpt-4o"
 API_URL = "https://api.openai.com/v1/chat/completions"
@@ -98,6 +99,141 @@ class OpenAIProvider(BaseLLMProvider):
             input_tokens=usage.get("prompt_tokens", 0),
             output_tokens=usage.get("completion_tokens", 0),
             stop_reason=choice.get("finish_reason"),
+        )
+
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
+    ) -> Generator[StreamEvent, None, LLMResponse]:
+        """Stream a chat response from OpenAI using SSE."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        api_messages = []
+        if system_prompt:
+            api_messages.append({"role": "system", "content": system_prompt})
+        api_messages.extend(messages)
+
+        body: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": MAX_TOKENS,
+            "messages": api_messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if tools:
+            body["tools"] = tools
+
+        text_parts: list[str] = []
+        tool_calls_map: dict[int, dict[str, str]] = {}  # index -> {id, name, args}
+        input_tokens = 0
+        output_tokens = 0
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                with self._client.stream("POST", API_URL, headers=headers, json=body) as resp:
+                    if resp.status_code in RETRY_STATUS_CODES and attempt < MAX_RETRIES:
+                        time.sleep(2 ** (attempt + 1))
+                        continue
+                    if resp.status_code != 200:
+                        error_msg = resp.read().decode()[:500]
+                        raise RuntimeError(f"OpenAI API {resp.status_code}: {error_msg}")
+
+                    for line in resp.iter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str.strip() == "[DONE]":
+                            break
+                        try:
+                            event = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+
+                        # Usage chunk
+                        if event.get("usage"):
+                            input_tokens = event["usage"].get("prompt_tokens", 0)
+                            output_tokens = event["usage"].get("completion_tokens", 0)
+                            continue
+
+                        choices = event.get("choices", [])
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
+
+                        # Text content
+                        if delta.get("content"):
+                            text_parts.append(delta["content"])
+                            yield StreamEvent(type="text_delta", text=delta["content"])
+
+                        # Tool calls
+                        if delta.get("tool_calls"):
+                            for tc in delta["tool_calls"]:
+                                idx = tc.get("index", 0)
+                                if idx not in tool_calls_map:
+                                    tool_calls_map[idx] = {
+                                        "id": tc.get("id", ""),
+                                        "name": tc.get("function", {}).get("name", ""),
+                                        "args": "",
+                                    }
+                                    if tool_calls_map[idx]["name"]:
+                                        yield StreamEvent(
+                                            type="tool_call_start",
+                                            tool_call_id=tool_calls_map[idx]["id"],
+                                            tool_name=tool_calls_map[idx]["name"],
+                                        )
+                                if tc.get("id") and not tool_calls_map[idx]["id"]:
+                                    tool_calls_map[idx]["id"] = tc["id"]
+                                if tc.get("function", {}).get("name") and not tool_calls_map[idx]["name"]:
+                                    tool_calls_map[idx]["name"] = tc["function"]["name"]
+                                arg_chunk = tc.get("function", {}).get("arguments", "")
+                                if arg_chunk:
+                                    tool_calls_map[idx]["args"] += arg_chunk
+                                    yield StreamEvent(
+                                        type="tool_call_delta",
+                                        text=arg_chunk,
+                                        tool_call_id=tool_calls_map[idx]["id"],
+                                    )
+
+                break
+            except httpx.TimeoutException:
+                if attempt < MAX_RETRIES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                raise RuntimeError("OpenAI API stream timed out")
+
+        # Build tool calls
+        final_tool_calls = []
+        for idx in sorted(tool_calls_map.keys()):
+            tc_data = tool_calls_map[idx]
+            try:
+                args = json.loads(tc_data["args"]) if tc_data["args"] else {}
+            except json.JSONDecodeError:
+                args = {}
+            final_tool_calls.append(ToolCall(
+                id=tc_data["id"],
+                name=tc_data["name"],
+                arguments=args,
+            ))
+
+        yield StreamEvent(
+            type="usage",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        yield StreamEvent(type="done")
+
+        final_text = "".join(text_parts) if text_parts else None
+        return LLMResponse(
+            text=final_text,
+            tool_calls=final_tool_calls,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            stop_reason="stop",
         )
 
     def format_tool_result(self, tool_call_id: str, result: str) -> dict[str, Any]:

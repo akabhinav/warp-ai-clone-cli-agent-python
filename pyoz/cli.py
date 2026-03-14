@@ -8,6 +8,8 @@ from typing import Any
 
 from pyoz.agent import Agent
 from pyoz.providers.base import BaseLLMProvider
+from pyoz.workspace import WorkspaceManager
+from pyoz.session import SessionManager
 
 
 # ANSI color codes
@@ -106,11 +108,18 @@ def _on_diff(path: str, old_text: str, new_text: str) -> None:
     print()
 
 
-def _handle_slash_command(command: str, agent: Agent) -> bool:
+def _handle_slash_command(command: str, agent: Agent, workspace_mgr: WorkspaceManager | None = None) -> bool:
     """Handle slash commands. Returns True if handled."""
-    cmd = command.strip().lower()
+    parts = command.strip().split(maxsplit=1)
+    cmd = parts[0].lower()
+    arg = parts[1].strip() if len(parts) > 1 else ""
 
-    if cmd == "/quit" or cmd == "/exit":
+    if cmd in ("/quit", "/exit"):
+        # Save session before quitting
+        try:
+            agent.save_session()
+        except Exception:
+            pass
         print(_color("\nGoodbye!", Colors.CYAN))
         sys.exit(0)
 
@@ -176,34 +185,164 @@ def _handle_slash_command(command: str, agent: Agent) -> bool:
             print(_color("  No PYOZ.md or .pyoz/rules.md found.", Colors.DIM))
         return True
 
+    # --- Workspace commands ---
+    elif cmd == "/workspace" or cmd == "/ws":
+        if not workspace_mgr:
+            workspace_mgr = WorkspaceManager()
+        if not arg:
+            # Show current + recent
+            print(f"  {_color('Current:', Colors.BOLD)} {agent.work_dir}")
+            recent = workspace_mgr.list_recent()
+            if recent:
+                print(f"  {_color('Recent workspaces:', Colors.BOLD)}")
+                for i, ws in enumerate(recent, 1):
+                    marker = _color(" ←", Colors.GREEN) if ws["path"] == agent.work_dir else ""
+                    print(f"    {_color(str(i), Colors.CYAN)}. {ws['name']} — {_color(ws['path'], Colors.DIM)}{marker}")
+                    print(f"       last: {ws.get('last_access', 'unknown')}")
+            else:
+                print(_color("  No recent workspaces.", Colors.DIM))
+        else:
+            # Switch workspace
+            try:
+                ws = workspace_mgr.switch(arg)
+                info = agent.change_work_dir(ws["path"])
+                workspace_mgr.touch(ws["path"])
+                print(_color(f"  ✓ Switched to: {ws['name']} ({ws['path']})", Colors.GREEN))
+                print(f"    {info['files_indexed']} files indexed, {info['symbols']} symbols")
+                if agent.turn_count > 0:
+                    print(f"    Resumed session ({agent.turn_count} turns)")
+            except (ValueError, FileNotFoundError) as e:
+                print(_color(f"  ✗ {e}", Colors.RED))
+        return True
+
+    elif cmd == "/ws-add":
+        if not workspace_mgr:
+            workspace_mgr = WorkspaceManager()
+        path = arg or agent.work_dir
+        name_parts = path.rsplit("/", 1)
+        ws = workspace_mgr.register(path, name_parts[-1] if name_parts else None)
+        print(_color(f"  ✓ Added workspace: {ws['name']} ({ws['path']})", Colors.GREEN))
+        return True
+
+    elif cmd == "/ws-remove":
+        if not workspace_mgr:
+            workspace_mgr = WorkspaceManager()
+        if not arg:
+            print(_color("  Usage: /ws-remove <name|number>", Colors.DIM))
+        elif workspace_mgr.remove(arg):
+            print(_color(f"  ✓ Removed workspace: {arg}", Colors.GREEN))
+        else:
+            print(_color(f"  ✗ Workspace not found: {arg}", Colors.RED))
+        return True
+
+    # --- Session commands ---
+    elif cmd == "/save":
+        path = agent.save_session()
+        print(_color(f"  ✓ Session saved: {path}", Colors.GREEN))
+        return True
+
+    elif cmd == "/resume":
+        if agent.load_session():
+            print(_color(f"  ✓ Session resumed ({agent.turn_count} turns, {agent.total_tool_calls} tool calls)", Colors.GREEN))
+        else:
+            print(_color("  No saved session found.", Colors.DIM))
+        return True
+
+    elif cmd == "/new":
+        archive = agent.new_session()
+        if archive:
+            print(_color(f"  ✓ Previous session archived. Starting fresh.", Colors.GREEN))
+        else:
+            print(_color("  ✓ Starting new session.", Colors.GREEN))
+        return True
+
+    elif cmd == "/sessions":
+        sessions = agent.list_sessions()
+        if not sessions:
+            print(_color("  No archived sessions.", Colors.DIM))
+        else:
+            print(f"  {_color('Archived sessions:', Colors.BOLD)}")
+            for i, s in enumerate(sessions, 1):
+                print(f"    {_color(str(i), Colors.CYAN)}. {s['saved_at']} — {s['turns']} turns ({s['provider']})")
+        return True
+
+    elif cmd == "/export":
+        md = agent.export_session()
+        if md:
+            export_path = os.path.join(agent.work_dir, "pyoz_session.md")
+            with open(export_path, "w", encoding="utf-8") as f:
+                f.write(md)
+            print(_color(f"  ✓ Session exported to: {export_path}", Colors.GREEN))
+        else:
+            print(_color("  No session to export.", Colors.DIM))
+        return True
+
+    # --- Streaming toggle ---
+    elif cmd == "/stream":
+        agent.streaming = not agent.streaming
+        state = "on" if agent.streaming else "off"
+        print(_color(f"  ✓ Streaming: {state}", Colors.GREEN))
+        return True
+
     elif cmd == "/help":
         print(f"""
   {_color('PyOz Commands:', Colors.BOLD)}
-  /undo       Undo last git commit
-  /diff       Show uncommitted changes
-  /log        Show recent git history
-  /index      Re-scan and re-index codebase
-  /files      List files in working directory
-  /stats      Show token usage and cost
-  /clear      Clear conversation history
-  /rules      Show loaded rules from PYOZ.md
-  /help       Show this help
-  /quit       Exit PyOz
+
+  {_color('Git:', Colors.YELLOW)}
+  /undo              Undo last git commit
+  /diff              Show uncommitted changes
+  /log               Show recent git history
+
+  {_color('Codebase:', Colors.YELLOW)}
+  /index             Re-scan and re-index codebase
+  /files             List files in working directory
+  /rules             Show loaded rules from PYOZ.md
+
+  {_color('Session:', Colors.YELLOW)}
+  /save              Save current session
+  /resume            Resume last saved session
+  /new               Archive current session, start fresh
+  /sessions          List archived sessions
+  /export            Export session as markdown
+  /clear             Clear conversation history
+
+  {_color('Workspace:', Colors.YELLOW)}
+  /workspace         Show current & recent workspaces
+  /workspace <path>  Switch to workspace by path, name, or number
+  /ws                Alias for /workspace
+  /ws-add [path]     Add current or given directory as workspace
+  /ws-remove <id>    Remove a workspace from recent list
+
+  {_color('Settings:', Colors.YELLOW)}
+  /stream            Toggle streaming output on/off
+  /stats             Show token usage and cost
+
+  /help              Show this help
+  /quit              Exit PyOz
 """)
         return True
 
     return False
 
 
-def _print_banner(info: dict[str, Any]) -> None:
+def _on_stream_token(text: str) -> None:
+    """Print streaming tokens as they arrive."""
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
+def _print_banner(info: dict[str, Any], session_resumed: bool = False) -> None:
     """Print startup banner."""
+    session_line = ""
+    if session_resumed:
+        session_line = f"\n  {_color('✓', Colors.GREEN)} Session: resumed ({info.get('session_turns', 0)} turns)"
     print(f"""
 {_color('🧙 PyOz — Coding Agent', Colors.BOLD + Colors.MAGENTA)}
   Provider: {_color(info['provider'], Colors.CYAN)} / {_color(info['model'], Colors.CYAN)}
   {_color('✓', Colors.GREEN)} tree-sitter AST indexer
   {_color('✓', Colors.GREEN)} Codebase: {info['files_indexed']} files indexed, {info['symbols']} symbols
   {_color('✓', Colors.GREEN)} Git: {info['git']}
-  {_color('✓' if info['rules'] else '○', Colors.GREEN if info['rules'] else Colors.DIM)} Rules: {'loaded from PYOZ.md' if info['rules'] else 'none (create PYOZ.md to add rules)'}
+  {_color('✓' if info['rules'] else '○', Colors.GREEN if info['rules'] else Colors.DIM)} Rules: {'loaded from PYOZ.md' if info['rules'] else 'none (create PYOZ.md to add rules)'}{session_line}
 
   Type /help for commands. Ctrl+C to interrupt.
 """)
@@ -218,6 +357,8 @@ def main():
     parser.add_argument("--model", help="Model name override")
     parser.add_argument("--ollama-url", default="http://localhost:11434", help="Ollama server URL")
     parser.add_argument("--work-dir", help="Working directory (default: current)")
+    parser.add_argument("--stream", action="store_true", help="Enable streaming output")
+    parser.add_argument("--no-resume", action="store_true", help="Don't resume previous session")
     parser.add_argument("--test", action="store_true", help="Run self-test")
 
     args = parser.parse_args()
@@ -236,11 +377,25 @@ def main():
         work_dir=work_dir,
         on_tool_call=_on_tool_call,
         on_diff=_on_diff,
+        on_stream_token=_on_stream_token,
+        streaming=args.stream,
     )
 
     # Initialize
     info = agent.initialize()
-    _print_banner(info)
+
+    # Register workspace
+    workspace_mgr = WorkspaceManager()
+    workspace_mgr.register(work_dir)
+
+    # Try to resume session
+    session_resumed = False
+    if not args.no_resume and agent.session_mgr.has_session():
+        session_resumed = agent.load_session()
+        if session_resumed:
+            info["session_turns"] = agent.turn_count
+
+    _print_banner(info, session_resumed)
 
     # Handle Ctrl+C gracefully
     interrupted = False
@@ -248,6 +403,11 @@ def main():
     def signal_handler(sig, frame):
         nonlocal interrupted
         if interrupted:
+            # Save before force quit
+            try:
+                agent.save_session()
+            except Exception:
+                pass
             print(_color("\nForce quit.", Colors.RED))
             sys.exit(1)
         interrupted = True
@@ -261,6 +421,7 @@ def main():
         try:
             user_input = input(_color("\n> ", Colors.GREEN + Colors.BOLD)).strip()
         except EOFError:
+            agent.save_session()
             print(_color("\nGoodbye!", Colors.CYAN))
             break
         except KeyboardInterrupt:
@@ -272,13 +433,17 @@ def main():
 
         # Slash commands
         if user_input.startswith("/"):
-            if _handle_slash_command(user_input, agent):
+            if _handle_slash_command(user_input, agent, workspace_mgr):
                 continue
 
         # Send to agent
         try:
+            if agent.streaming:
+                print()  # Newline before streaming output
+
             response = agent.chat(user_input)
-            if response:
+
+            if response and not agent.streaming:
                 print(f"\n{response}")
 
             # Show token stats

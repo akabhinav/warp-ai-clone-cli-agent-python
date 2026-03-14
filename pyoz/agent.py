@@ -6,10 +6,13 @@ No pipeline, no classification, no entity extraction.
 
 import json
 import os
+import sys
 import traceback
+from collections.abc import Generator
 from typing import Any, Callable
 
-from pyoz.providers.base import BaseLLMProvider, LLMResponse, ToolCall
+from pyoz.providers.base import BaseLLMProvider, LLMResponse, StreamEvent, ToolCall
+from pyoz.session import SessionManager
 from pyoz.tools.file_tools import read_file, write_file, edit_file, search_files, list_directory
 from pyoz.tools.command_tools import run_command
 from pyoz.tools.git_tools import (
@@ -79,11 +82,15 @@ class Agent:
         work_dir: str | None = None,
         on_tool_call: Callable[[str, dict, str], None] | None = None,
         on_diff: Callable[[str, str, str], None] | None = None,
+        on_stream_token: Callable[[str], None] | None = None,
+        streaming: bool = False,
     ):
         self.provider = provider
         self.work_dir = os.path.abspath(work_dir) if work_dir else os.getcwd()
         self.on_tool_call = on_tool_call  # callback(tool_name, args, result)
         self.on_diff = on_diff  # callback(path, old_text, new_text)
+        self.on_stream_token = on_stream_token  # callback(text_chunk)
+        self.streaming = streaming
 
         # Conversation history
         self.messages: list[dict[str, Any]] = []
@@ -93,6 +100,9 @@ class Agent:
 
         # Rules
         self.rules = _load_rules(self.work_dir)
+
+        # Session manager
+        self.session_mgr = SessionManager(self.work_dir)
 
         # Session stats
         self.total_input_tokens = 0
@@ -147,8 +157,11 @@ class Agent:
         final_text = ""
 
         while tool_calls_this_turn < MAX_TOOL_CALLS_PER_TURN:
-            # Call LLM
-            response = self.provider.chat(self.messages, tools, system_prompt)
+            # Call LLM (streaming or non-streaming)
+            if self.streaming and self.on_stream_token:
+                response = self._chat_streaming(tools, system_prompt)
+            else:
+                response = self.provider.chat(self.messages, tools, system_prompt)
 
             # Track tokens
             self.total_input_tokens += response.input_tokens
@@ -202,7 +215,63 @@ class Agent:
         if tool_calls_this_turn >= MAX_TOOL_CALLS_PER_TURN:
             final_text += "\n\n[Reached maximum tool calls per turn (50). Stopping.]"
 
+        # Auto-save session after each turn
+        self._auto_save_session()
+
         return final_text
+
+    def _chat_streaming(
+        self,
+        tools: list[dict[str, Any]],
+        system_prompt: str,
+    ) -> LLMResponse:
+        """Call LLM with streaming, emitting tokens via callback."""
+        stream = self.provider.chat_stream(self.messages, tools, system_prompt)
+
+        # Collect the full response from the generator
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+        input_tokens = 0
+        output_tokens = 0
+
+        # Track tool call building during stream
+        current_tool_args: dict[str, str] = {}  # tool_call_id -> accumulated args json
+
+        try:
+            for event in stream:
+                if event.type == "text_delta" and event.text:
+                    text_parts.append(event.text)
+                    if self.on_stream_token:
+                        self.on_stream_token(event.text)
+                elif event.type == "tool_call_start":
+                    current_tool_args[event.tool_call_id] = ""
+                elif event.type == "tool_call_delta":
+                    if event.tool_call_id in current_tool_args:
+                        current_tool_args[event.tool_call_id] += event.text
+                elif event.type == "usage":
+                    input_tokens = event.input_tokens
+                    output_tokens = event.output_tokens
+                elif event.type == "done":
+                    break
+        except StopIteration as e:
+            # Generator returned a value
+            if isinstance(e.value, LLMResponse):
+                return e.value
+
+        # If generator returned response through return statement
+        # we need to construct it from events
+        final_text = "".join(text_parts) if text_parts else None
+
+        # End the streaming line if we printed text
+        if text_parts and self.on_stream_token:
+            self.on_stream_token("\n")
+
+        return LLMResponse(
+            text=final_text,
+            tool_calls=tool_calls,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
 
     def _execute_tool(self, tool_call: ToolCall) -> str:
         """Execute a single tool call and return the result as string."""
@@ -389,3 +458,86 @@ class Agent:
             "files": self.indexer.file_count(),
             "symbols": self.indexer.symbol_count(),
         }
+
+    # --- Session persistence ---
+
+    def _auto_save_session(self) -> None:
+        """Auto-save session after each turn."""
+        try:
+            self.session_mgr.save(
+                messages=self.messages,
+                stats=self.get_stats(),
+                provider=self.provider.provider_name,
+                model=self.provider.model_name,
+            )
+        except Exception:
+            pass  # Don't fail on save errors
+
+    def save_session(self) -> str:
+        """Manually save the current session."""
+        return self.session_mgr.save(
+            messages=self.messages,
+            stats=self.get_stats(),
+            provider=self.provider.provider_name,
+            model=self.provider.model_name,
+        )
+
+    def load_session(self) -> bool:
+        """Load a previous session if available. Returns True if loaded."""
+        data = self.session_mgr.load()
+        if not data:
+            return False
+        self.messages = data.get("messages", [])
+        stats = data.get("stats", {})
+        self.total_input_tokens = stats.get("input_tokens", 0)
+        self.total_output_tokens = stats.get("output_tokens", 0)
+        self.total_tool_calls = stats.get("total_tool_calls", 0)
+        self.turn_count = stats.get("turns", 0)
+        return True
+
+    def new_session(self) -> str | None:
+        """Archive current session and start fresh."""
+        archive = self.session_mgr.archive()
+        self.clear_history()
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_tool_calls = 0
+        self.session_mgr.delete()
+        return archive
+
+    def list_sessions(self) -> list[dict[str, str]]:
+        """List archived sessions."""
+        return self.session_mgr.list_history()
+
+    def export_session(self) -> str | None:
+        """Export current session as markdown."""
+        return self.session_mgr.export_markdown()
+
+    # --- Workspace switching ---
+
+    def change_work_dir(self, new_dir: str) -> dict[str, Any]:
+        """Switch working directory and re-initialize."""
+        abs_path = os.path.abspath(new_dir)
+        if not os.path.isdir(abs_path):
+            raise FileNotFoundError(f"Directory not found: {abs_path}")
+
+        # Save current session before switching
+        self._auto_save_session()
+
+        # Switch
+        self.work_dir = abs_path
+        self.indexer = ASTIndexer(self.work_dir)
+        self.rules = _load_rules(self.work_dir)
+        self.session_mgr = SessionManager(self.work_dir)
+
+        # Clear conversation (different project context)
+        self.messages.clear()
+        self.turn_count = 0
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.total_tool_calls = 0
+
+        # Try to load existing session for new workspace
+        self.load_session()
+
+        return self.initialize()
