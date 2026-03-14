@@ -4,34 +4,72 @@ Pre-configured development environment with all enterprise software pre-installe
 Drop in the PyOz agent and build any enterprise system — databases, message queues,
 and runtimes are all ready to use.
 
+Works on **Linux**, **macOS**, and **Windows** (via Docker Desktop).
+
 ## Quick Start
 
+### Linux / macOS
+
 ```bash
-# 1. Configure API keys
 cd sandbox
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY or OPENAI_API_KEY
 
-# 2. Start services (pick a profile)
+# 1. Setup secrets (prompts for API keys, generates random DB passwords)
+./setup-secrets.sh
 
-# Lightweight — just agent + PostgreSQL + Redis
-docker compose up -d agent postgres redis
-
-# Standard — add MySQL, MongoDB, Kafka
-docker compose up -d
-
-# Full enterprise — add RabbitMQ, Elasticsearch, MinIO, Nginx
-docker compose --profile full up -d
+# 2. Start services
+docker compose up -d                     # Standard
+docker compose up -d agent postgres redis # Lightweight
+docker compose --profile full up -d       # Full enterprise
 
 # 3. Enter the agent
 docker exec -it pyoz-agent bash
-
-# 4. Start PyOz
 pyoz
 
-# 5. Ask it to build anything!
+# 4. Ask it to build anything!
 > Build an inventory management system with PostgreSQL, Redis caching, and Kafka events
 ```
+
+### Windows
+
+```powershell
+cd sandbox
+
+# Option A: Double-click start.bat (does everything)
+
+# Option B: Manual
+.\setup-secrets.ps1                            # Setup secrets
+docker compose up -d                           # Start services
+docker exec -it pyoz-agent bash                # Enter agent
+pyoz                                           # Start PyOz
+```
+
+> **Windows Requirements**: [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
+> with WSL 2 backend enabled (default). No other dependencies needed.
+
+## Security
+
+Credentials are protected at every layer:
+
+| Layer | Protection |
+|-------|-----------|
+| **Storage** | API keys and passwords stored as files in `secrets/` (chmod 600 / Windows ACL) |
+| **Docker** | Mounted via Docker secrets at `/run/secrets/` — never in env vars or `docker inspect` |
+| **Agent output** | Passwords masked as `py****` in `environment_discovery()` output |
+| **Network** | All ports bound to `127.0.0.1` — not exposed to LAN or internet |
+| **Container** | No Docker socket mount, `no-new-privileges`, capabilities dropped |
+| **Git** | `secrets/` directory is git-ignored — never committed |
+
+### Setup Secrets
+
+```bash
+# Linux/macOS                    # Windows
+./setup-secrets.sh               .\setup-secrets.ps1
+```
+
+This will:
+1. Prompt for your API keys (Anthropic and/or OpenAI)
+2. Generate random 32-character passwords for all databases
+3. Lock file permissions (chmod 600 / Windows ACL)
 
 ## What's Included
 
@@ -62,55 +100,65 @@ pyoz
 
 ## How the Agent Knows Credentials
 
-All service credentials are injected as environment variables into the agent container.
-When the agent runs `environment_discovery("all")`, it sees:
+Credentials flow through Docker secrets — never plain text env vars:
 
-```json
+```
+secrets/db_credentials.json (your machine, chmod 600)
+  → Docker mounts at /run/secrets/db_credentials (inside container)
+    → Agent reads JSON file internally
+      → environment_discovery() returns MASKED output:
+
 {
   "sandbox_services": {
     "postgres": {
       "host": "postgres",
       "port": 5432,
       "user": "pyoz",
-      "password": "pyoz_secret",
+      "password": "py****",        ← masked, never shows real password
       "database": "app_db",
-      "running": true
-    },
-    "redis": {
-      "host": "redis",
-      "port": 6379,
-      "running": true
-    },
-    "kafka": {
-      "host": "kafka",
-      "port": 9092,
-      "bootstrap_servers": "kafka:9092",
+      "connection_hint": "Read password from /run/secrets/db_credentials",
       "running": true
     }
   }
 }
 ```
 
-The agent reads env vars and generates code with correct connection strings automatically.
+The agent reads credentials from the secrets file internally to connect,
+but never exposes raw passwords in output.
 
-## Default Credentials
+## Platform-Specific Notes
 
-| Service | Username | Password | Database |
-|---------|----------|----------|----------|
-| PostgreSQL | `pyoz` | `pyoz_secret` | `app_db` |
-| MySQL | `pyoz` | `pyoz_secret` | `app_db` |
-| MongoDB | `pyoz` | `pyoz_secret` | `app_db` |
-| Redis | *(none)* | *(none)* | — |
-| RabbitMQ | `pyoz` | `pyoz_secret` | — |
-| MinIO | `pyoz` | `pyoz_secret_key` | — |
+### Windows
 
-Change these in `.env` before starting services.
+- **Docker Desktop WSL 2** is required (default on modern Docker Desktop)
+- The agent container runs Linux — all runtimes work identically to Linux
+- Use PowerShell scripts (`*.ps1`) instead of bash scripts (`*.sh`)
+- File permissions use Windows ACLs instead of Unix chmod
+- If you see "port already in use", change ports in `.env`:
+  ```
+  POSTGRES_EXTERNAL_PORT=5433
+  MYSQL_EXTERNAL_PORT=3307
+  ```
+
+### macOS (Apple Silicon / M1-M4)
+
+- Docker Desktop handles ARM64 translation automatically
+- The Dockerfile supports both `amd64` and `arm64` architectures
+- Some images (Elasticsearch) may run under Rosetta emulation — slightly slower
+
+### Linux
+
+- Native performance, no emulation overhead
+- If using Podman instead of Docker: `alias docker=podman` works for most commands
 
 ## Common Operations
 
 ```bash
 # Health check
+# Linux/macOS:
 docker exec pyoz-agent /opt/pyoz/sandbox/healthcheck.sh
+# Windows:
+powershell -File healthcheck.ps1
 
 # View service logs
 docker compose logs -f kafka
@@ -127,9 +175,6 @@ docker compose --profile full down -v
 
 # Rebuild agent image (after code changes)
 docker compose build agent
-
-# Scale (if needed)
-docker compose up -d --scale kafka=3
 ```
 
 ## Resource Requirements
@@ -139,6 +184,9 @@ docker compose up -d --scale kafka=3
 | Lightweight (agent + postgres + redis) | ~1 GB | ~5 GB |
 | Standard (+ mysql + mongodb + kafka) | ~4 GB | ~8 GB |
 | Full enterprise (+ es + rabbitmq + minio) | ~8 GB | ~10 GB |
+
+**Windows note**: Docker Desktop reserves RAM via WSL 2. Adjust in
+Docker Desktop Settings > Resources if needed.
 
 ## Customization
 

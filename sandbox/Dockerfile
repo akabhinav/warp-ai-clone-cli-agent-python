@@ -62,7 +62,14 @@ RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public | gp
     apt-get update && apt-get install -y temurin-21-jdk && \
     rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64
+# JAVA_HOME is architecture-dependent
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+      ln -s /usr/lib/jvm/temurin-21-jdk-amd64 /usr/lib/jvm/temurin-21-jdk; \
+    elif [ "$ARCH" = "arm64" ]; then \
+      ln -s /usr/lib/jvm/temurin-21-jdk-arm64 /usr/lib/jvm/temurin-21-jdk; \
+    fi
+ENV JAVA_HOME=/usr/lib/jvm/temurin-21-jdk
 
 # ── Maven & Gradle ───────────────────────────────────────────
 ARG MAVEN_VERSION=3.9.9
@@ -78,7 +85,8 @@ RUN curl -fsSL https://services.gradle.org/distributions/gradle-${GRADLE_VERSION
 
 # ── Go 1.22 ──────────────────────────────────────────────────
 ARG GO_VERSION=1.22.7
-RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar xz -C /usr/local
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz | tar xz -C /usr/local
 ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
 ENV GOPATH=/root/go
 
@@ -136,19 +144,22 @@ RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /
     apt-get update && apt-get install -y docker-ce-cli docker-compose-plugin && \
     rm -rf /var/lib/apt/lists/*
 
-# kubectl
-RUN curl -fsSL https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl \
+# kubectl (multi-arch)
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" \
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
-# Helm
+# Helm (auto-detects arch)
 RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-# Terraform
-RUN curl -fsSL https://releases.hashicorp.com/terraform/1.9.5/terraform_1.9.5_linux_amd64.zip -o /tmp/tf.zip && \
+# Terraform (multi-arch)
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://releases.hashicorp.com/terraform/1.9.5/terraform_1.9.5_linux_${ARCH}.zip" -o /tmp/tf.zip && \
     unzip -q /tmp/tf.zip -d /usr/local/bin && rm /tmp/tf.zip
 
-# yq (YAML processor)
-RUN curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && \
+# yq (multi-arch)
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}" -o /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq
 
 # ── Python DB drivers (for PyOz database_tool) ──────────────
