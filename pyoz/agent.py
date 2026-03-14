@@ -495,36 +495,45 @@ class Agent:
 
         # Collect the full response from the generator
         text_parts: list[str] = []
-        tool_calls: list[ToolCall] = []
         input_tokens = 0
         output_tokens = 0
 
         # Track tool call building during stream
-        current_tool_args: dict[str, str] = {}  # tool_call_id -> accumulated args json
+        # tool_call_id -> {"name": str, "args": str}
+        tool_call_data: dict[str, dict[str, str]] = {}
 
-        try:
-            for event in stream:
-                if event.type == "text_delta" and event.text:
-                    text_parts.append(event.text)
-                    if self.on_stream_token:
-                        self.on_stream_token(event.text)
-                elif event.type == "tool_call_start":
-                    current_tool_args[event.tool_call_id] = ""
-                elif event.type == "tool_call_delta":
-                    if event.tool_call_id in current_tool_args:
-                        current_tool_args[event.tool_call_id] += event.text
-                elif event.type == "usage":
-                    input_tokens = event.input_tokens
-                    output_tokens = event.output_tokens
-                elif event.type == "done":
-                    break
-        except StopIteration as e:
-            # Generator returned a value
-            if isinstance(e.value, LLMResponse):
-                return e.value
+        for event in stream:
+            if event.type == "text_delta" and event.text:
+                text_parts.append(event.text)
+                if self.on_stream_token:
+                    self.on_stream_token(event.text)
+            elif event.type == "tool_call_start":
+                tool_call_data[event.tool_call_id] = {
+                    "name": event.tool_name,
+                    "args": "",
+                }
+            elif event.type == "tool_call_delta":
+                if event.tool_call_id in tool_call_data:
+                    tool_call_data[event.tool_call_id]["args"] += event.text or ""
+            elif event.type == "usage":
+                input_tokens = event.input_tokens
+                output_tokens = event.output_tokens
+            elif event.type == "done":
+                break
 
-        # If generator returned response through return statement
-        # we need to construct it from events
+        # Build ToolCall objects from accumulated stream data
+        tool_calls: list[ToolCall] = []
+        for tc_id, tc_info in tool_call_data.items():
+            try:
+                args = json.loads(tc_info["args"]) if tc_info["args"] else {}
+            except json.JSONDecodeError:
+                args = {}
+            tool_calls.append(ToolCall(
+                id=tc_id,
+                name=tc_info["name"],
+                arguments=args,
+            ))
+
         final_text = "".join(text_parts) if text_parts else None
 
         # End the streaming line if we printed text

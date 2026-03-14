@@ -316,7 +316,7 @@ Examples:
     parser.add_argument("--model", help="Model name override")
     parser.add_argument("--ollama-url", default="http://localhost:11434", help="Ollama server URL")
     parser.add_argument("--work-dir", help="Working directory (default: current)")
-    parser.add_argument("--stream", action="store_true", help="Enable streaming output")
+    parser.add_argument("--no-stream", action="store_true", help="Disable streaming output (streaming is on by default)")
     parser.add_argument("--no-resume", action="store_true", help="Don't resume previous session")
     parser.add_argument("--test", action="store_true", help="Run self-test")
 
@@ -338,7 +338,7 @@ Examples:
         on_diff=_on_diff,
         on_stream_token=_on_stream_token,
         on_ask_user=_on_ask_user,
-        streaming=args.stream,
+        streaming=not args.no_stream,
     )
 
     # Initialize

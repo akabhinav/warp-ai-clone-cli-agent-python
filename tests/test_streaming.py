@@ -54,6 +54,59 @@ class MockStreamProvider(BaseLLMProvider):
         return {"role": "assistant", "content": content}
 
 
+class MockStreamToolProvider(BaseLLMProvider):
+    """Mock provider that emits tool call events in streaming mode."""
+
+    def __init__(self, responses=None):
+        super().__init__(api_key="test", model="mock")
+        self.responses = responses or []
+        self._idx = 0
+
+    @property
+    def provider_name(self):
+        return "claude"
+
+    @property
+    def model_name(self):
+        return "mock"
+
+    def chat(self, messages, tools, system_prompt=None):
+        if self._idx < len(self.responses):
+            resp = self.responses[self._idx]
+            self._idx += 1
+            return resp
+        return LLMResponse(text="done")
+
+    def chat_stream(self, messages, tools, system_prompt=None):
+        if self._idx < len(self.responses):
+            resp = self.responses[self._idx]
+            self._idx += 1
+            if resp.text:
+                for word in resp.text.split(" "):
+                    yield StreamEvent(type="text_delta", text=word + " ")
+            import json as _json
+            for tc in resp.tool_calls:
+                yield StreamEvent(type="tool_call_start", tool_call_id=tc.id, tool_name=tc.name)
+                args_json = _json.dumps(tc.arguments)
+                yield StreamEvent(type="tool_call_delta", text=args_json, tool_call_id=tc.id)
+            yield StreamEvent(type="usage", input_tokens=resp.input_tokens, output_tokens=resp.output_tokens)
+            yield StreamEvent(type="done")
+            return resp
+        yield StreamEvent(type="done")
+        return LLMResponse(text="done")
+
+    def format_tool_result(self, tool_call_id, result):
+        return {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_call_id, "content": result}]}
+
+    def format_tool_calls_message(self, response):
+        content = []
+        if response.text:
+            content.append({"type": "text", "text": response.text})
+        for tc in response.tool_calls:
+            content.append({"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments})
+        return {"role": "assistant", "content": content}
+
+
 class TestStreamEvent:
     def test_text_delta(self):
         event = StreamEvent(type="text_delta", text="Hello")
@@ -125,6 +178,36 @@ class TestStreamingAgent:
             assert len(chunks) >= 1
             combined = "".join(chunks)
             assert "Hello" in combined
+
+    def test_streaming_with_tool_calls(self):
+        """Test that streaming agent correctly captures tool calls from stream events."""
+        import tempfile
+        from pyoz.agent import Agent
+
+        chunks = []
+
+        def on_token(text):
+            chunks.append(text)
+
+        provider = MockStreamToolProvider([
+            LLMResponse(
+                text=None,
+                tool_calls=[ToolCall(id="tc1", name="list_directory", arguments={"path": "."})],
+                input_tokens=20,
+                output_tokens=10,
+            ),
+            LLMResponse(text="Here are the files.", input_tokens=30, output_tokens=15),
+        ])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agent = Agent(
+                provider=provider,
+                work_dir=tmpdir,
+                on_stream_token=on_token,
+                streaming=True,
+            )
+            result = agent.chat("list files")
+            assert "files" in result.lower() or "Here" in result
 
     def test_non_streaming_no_callback(self):
         """Test that non-streaming mode doesn't use callback."""
