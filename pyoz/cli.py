@@ -78,7 +78,8 @@ def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
 
     elif provider == "ollama":
         from pyoz.providers.ollama_provider import OllamaProvider
-        return OllamaProvider(model=args.model, base_url=args.ollama_url)
+        ollama_url = args.ollama_url or os.environ.get("OLLAMA_URL")
+        return OllamaProvider(model=args.model, base_url=ollama_url)
 
     else:
         print_error(f"Unknown provider '{provider}'. Use: claude, openai, ollama")
