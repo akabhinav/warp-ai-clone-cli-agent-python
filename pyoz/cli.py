@@ -38,12 +38,26 @@ from pyoz.ui.display import (
 from pyoz.ui.input import InputManager
 
 
+def _read_secret_file(path: str) -> str | None:
+    """Read an API key from a Docker secret file."""
+    try:
+        with open(path) as f:
+            value = f.read().strip()
+            return value if value else None
+    except (FileNotFoundError, PermissionError):
+        return None
+
+
 def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
     """Create an LLM provider from CLI arguments."""
     provider = args.provider.lower()
 
     if provider == "claude":
-        api_key = args.api_key or os.environ.get("ANTHROPIC_API_KEY")
+        api_key = (
+            args.api_key
+            or os.environ.get("ANTHROPIC_API_KEY")
+            or _read_secret_file("/run/secrets/anthropic_api_key")
+        )
         if not api_key:
             print_error("--api-key or ANTHROPIC_API_KEY environment variable required for Claude")
             sys.exit(1)
@@ -51,7 +65,11 @@ def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
         return ClaudeProvider(api_key=api_key, model=args.model)
 
     elif provider == "openai":
-        api_key = args.api_key or os.environ.get("OPENAI_API_KEY")
+        api_key = (
+            args.api_key
+            or os.environ.get("OPENAI_API_KEY")
+            or _read_secret_file("/run/secrets/openai_api_key")
+        )
         if not api_key:
             print_error("--api-key or OPENAI_API_KEY environment variable required for OpenAI")
             sys.exit(1)
