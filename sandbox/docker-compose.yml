@@ -93,7 +93,7 @@ services:
       - agent-net
     # Bind to localhost only — not exposed to LAN/internet
     ports:
-      - "127.0.0.1:${POSTGRES_EXTERNAL_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_EXTERNAL_PORT:-5433}:5432"
     environment:
       POSTGRES_USER_FILE: /run/secrets/db_credentials
       POSTGRES_PASSWORD_FILE: /run/secrets/db_credentials
