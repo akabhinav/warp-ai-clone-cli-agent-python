@@ -1,0 +1,5 @@
+# Force Unix line endings for shell scripts and Dockerfiles
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+*.py text eol=lf
