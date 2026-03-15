@@ -16,6 +16,63 @@ RETRY_STATUS_CODES = {429, 500, 503}
 MAX_RETRIES = 3
 
 
+def _sanitize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert any Claude-format messages to OpenAI-compatible format.
+
+    Ensures no tool_use/tool_result content blocks are sent to DeepSeek,
+    which only understands OpenAI-style tool_calls and role=tool messages.
+    This can happen when resuming a session saved with a different provider.
+    """
+    sanitized: list[dict[str, Any]] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+
+        if role == "assistant" and isinstance(content, list):
+            text_parts: list[str] = []
+            tool_calls: list[dict[str, Any]] = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif block.get("type") == "tool_use":
+                    tool_calls.append({
+                        "id": block.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": block.get("name", ""),
+                            "arguments": json.dumps(
+                                block.get("input", {}), default=str
+                            ),
+                        },
+                    })
+            new_msg: dict[str, Any] = {
+                "role": "assistant",
+                "content": " ".join(text_parts) if text_parts else "",
+            }
+            if tool_calls:
+                new_msg["tool_calls"] = tool_calls
+            sanitized.append(new_msg)
+
+        elif role == "user" and isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "tool_result":
+                    sanitized.append({
+                        "role": "tool",
+                        "tool_call_id": block.get("tool_use_id", ""),
+                        "content": block.get("content", ""),
+                    })
+                else:
+                    sanitized.append({"role": "user", "content": str(block)})
+        else:
+            sanitized.append(msg)
+
+    return sanitized
+
+
 class DeepSeekProvider(BaseLLMProvider):
     """DeepSeek API provider (OpenAI-compatible)."""
 
@@ -45,7 +102,7 @@ class DeepSeekProvider(BaseLLMProvider):
         api_messages = []
         if system_prompt:
             api_messages.append({"role": "system", "content": system_prompt})
-        api_messages.extend(messages)
+        api_messages.extend(_sanitize_messages(messages))
 
         body: dict[str, Any] = {
             "model": self.model,
@@ -115,7 +172,7 @@ class DeepSeekProvider(BaseLLMProvider):
         api_messages = []
         if system_prompt:
             api_messages.append({"role": "system", "content": system_prompt})
-        api_messages.extend(messages)
+        api_messages.extend(_sanitize_messages(messages))
 
         body: dict[str, Any] = {
             "model": self.model,
