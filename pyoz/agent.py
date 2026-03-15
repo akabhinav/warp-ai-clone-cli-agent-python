@@ -82,6 +82,143 @@ def _load_rules(work_dir: str) -> str:
     return ""
 
 
+def _convert_messages(
+    messages: list[dict[str, Any]],
+    from_provider: str,
+    to_provider: str,
+) -> list[dict[str, Any]]:
+    """Convert message history from one provider format to another.
+
+    Handles the key format differences:
+    - Claude uses content arrays with type=tool_use / type=tool_result blocks
+    - OpenAI/DeepSeek use tool_calls array on assistant + role=tool messages
+    """
+    is_from_claude = from_provider == "claude"
+    is_to_claude = to_provider == "claude"
+
+    if is_from_claude == is_to_claude:
+        # Both Claude or both OpenAI-style — no conversion needed
+        return messages
+
+    converted: list[dict[str, Any]] = []
+
+    if is_from_claude and not is_to_claude:
+        # Claude → OpenAI/DeepSeek/Ollama
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content")
+
+            if role == "assistant" and isinstance(content, list):
+                # Convert Claude tool_use blocks to OpenAI tool_calls format
+                text_parts = []
+                tool_calls = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif block.get("type") == "tool_use":
+                        tool_calls.append({
+                            "id": block.get("id", ""),
+                            "type": "function",
+                            "function": {
+                                "name": block.get("name", ""),
+                                "arguments": json.dumps(
+                                    block.get("input", {}), default=str
+                                ),
+                            },
+                        })
+                new_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": " ".join(text_parts) if text_parts else "",
+                }
+                if tool_calls:
+                    new_msg["tool_calls"] = tool_calls
+                converted.append(new_msg)
+
+            elif role == "user" and isinstance(content, list):
+                # Convert Claude tool_result blocks to separate tool messages
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "tool_result":
+                        converted.append({
+                            "role": "tool",
+                            "tool_call_id": block.get("tool_use_id", ""),
+                            "content": block.get("content", ""),
+                        })
+                    else:
+                        # Non-tool user content, keep as-is
+                        converted.append({"role": "user", "content": str(block)})
+            else:
+                converted.append(msg)
+
+    else:
+        # OpenAI/DeepSeek/Ollama → Claude
+        for msg in messages:
+            role = msg.get("role")
+
+            if role == "assistant" and msg.get("tool_calls"):
+                # Convert OpenAI tool_calls to Claude content array
+                content_blocks: list[dict[str, Any]] = []
+                text = msg.get("content", "")
+                if text:
+                    content_blocks.append({"type": "text", "text": text})
+                for tc in msg["tool_calls"]:
+                    func = tc.get("function", {})
+                    try:
+                        args = json.loads(func.get("arguments", "{}"))
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    content_blocks.append({
+                        "type": "tool_use",
+                        "id": tc.get("id", ""),
+                        "name": func.get("name", ""),
+                        "input": args,
+                    })
+                converted.append({"role": "assistant", "content": content_blocks})
+
+            elif role == "tool":
+                # Collect tool results — Claude expects them grouped in a user message
+                # We'll add each as a separate user message with tool_result content
+                # (they'll be merged if consecutive in a later pass)
+                converted.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": msg.get("tool_call_id", ""),
+                        "content": msg.get("content", ""),
+                    }],
+                })
+            else:
+                converted.append(msg)
+
+        # Merge consecutive user messages with tool_result content (Claude requirement)
+        merged: list[dict[str, Any]] = []
+        for msg in converted:
+            if (
+                msg.get("role") == "user"
+                and isinstance(msg.get("content"), list)
+                and merged
+                and merged[-1].get("role") == "user"
+                and isinstance(merged[-1].get("content"), list)
+                and all(
+                    isinstance(b, dict) and b.get("type") == "tool_result"
+                    for b in merged[-1]["content"]
+                )
+                and all(
+                    isinstance(b, dict) and b.get("type") == "tool_result"
+                    for b in msg["content"]
+                )
+            ):
+                merged[-1]["content"].extend(msg["content"])
+            else:
+                merged.append(msg)
+        converted = merged
+
+    return converted
+
+
 def _build_system_prompt(rules: str, codebase_ctx: str) -> str:
     """Build the system prompt for the LLM."""
     shell_info = get_shell_info()
@@ -898,6 +1035,13 @@ class Agent:
         self.total_output_tokens = stats.get("output_tokens", 0)
         self.total_tool_calls = stats.get("total_tool_calls", 0)
         self.turn_count = stats.get("turns", 0)
+
+        # Convert messages if saved provider differs from current provider
+        saved_provider = data.get("provider")
+        current_provider = self.provider.provider_name
+        if saved_provider and saved_provider != current_provider:
+            self.messages = _convert_messages(self.messages, saved_provider, current_provider)
+
         return True
 
     def new_session(self) -> str | None:
