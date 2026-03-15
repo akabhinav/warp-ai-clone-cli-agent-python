@@ -7,7 +7,9 @@ from typing import Any
 
 import httpx
 
-from pyoz.providers.base import BaseLLMProvider, LLMResponse, ToolCall
+from collections.abc import Generator
+
+from pyoz.providers.base import BaseLLMProvider, LLMResponse, StreamEvent, ToolCall
 
 DEFAULT_MODEL = "qwen2.5:7b"
 DEFAULT_URL = "http://localhost:11434"
@@ -143,6 +145,109 @@ class OllamaProvider(BaseLLMProvider):
             input_tokens=prompt_eval,
             output_tokens=eval_count,
             stop_reason=data.get("done_reason"),
+        )
+
+    def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        system_prompt: str | None = None,
+    ) -> Generator[StreamEvent, None, LLMResponse]:
+        """Stream a chat response from Ollama."""
+        api_messages = []
+        if system_prompt:
+            api_messages.append({"role": "system", "content": system_prompt})
+        api_messages.extend(self._convert_messages(messages))
+
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": api_messages,
+            "stream": True,
+        }
+        if tools:
+            body["tools"] = tools
+
+        url = f"{self.base_url}/api/chat"
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+        input_tokens = 0
+        output_tokens = 0
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                with self._client.stream("POST", url, json=body) as resp:
+                    if resp.status_code != 200:
+                        if attempt < MAX_RETRIES:
+                            time.sleep(2 ** (attempt + 1))
+                            continue
+                        error_msg = resp.read().decode()[:500]
+                        raise RuntimeError(f"Ollama API {resp.status_code}: {error_msg}")
+
+                    for line in resp.iter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+                        msg = data.get("message", {})
+
+                        # Text content
+                        if msg.get("content"):
+                            text_parts.append(msg["content"])
+                            yield StreamEvent(type="text_delta", text=msg["content"])
+
+                        # Tool calls (arrive in final message)
+                        if msg.get("tool_calls"):
+                            for tc in msg["tool_calls"]:
+                                func = tc.get("function", {})
+                                args = func.get("arguments", {})
+                                if isinstance(args, str):
+                                    try:
+                                        args = json.loads(args)
+                                    except json.JSONDecodeError:
+                                        args = {}
+                                tool_call = ToolCall(
+                                    id=f"ollama_{id(tc)}",
+                                    name=func.get("name", ""),
+                                    arguments=args,
+                                )
+                                tool_calls.append(tool_call)
+                                yield StreamEvent(
+                                    type="tool_call_start",
+                                    tool_call_id=tool_call.id,
+                                    tool_name=tool_call.name,
+                                )
+
+                        # Final message with token counts
+                        if data.get("done"):
+                            input_tokens = data.get("prompt_eval_count", 0)
+                            output_tokens = data.get("eval_count", 0)
+
+                break
+            except httpx.ConnectError:
+                raise RuntimeError(f"Cannot connect to Ollama at {self.base_url}. Is it running?")
+            except httpx.TimeoutException:
+                if attempt < MAX_RETRIES:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                raise RuntimeError("Ollama stream timed out")
+
+        yield StreamEvent(
+            type="usage",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        yield StreamEvent(type="done")
+
+        final_text = "".join(text_parts) if text_parts else None
+        return LLMResponse(
+            text=final_text,
+            tool_calls=tool_calls,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            stop_reason="stop",
         )
 
     def format_tool_result(self, tool_call_id: str, result: str) -> dict[str, Any]:

@@ -292,12 +292,7 @@ def _handle_slash_command(command: str, agent: Agent, workspace_mgr: WorkspaceMa
             console.print("  [pyoz.subtle]No session to export.[/]")
         return True
 
-    # --- Streaming toggle ---
-    elif cmd == "/stream":
-        agent.streaming = not agent.streaming
-        state = "on" if agent.streaming else "off"
-        print_success(f"Streaming: {state}")
-        return True
+    # Streaming is always on for all providers
 
     elif cmd == "/platform":
         print_platform_info()
@@ -329,7 +324,7 @@ Examples:
     parser.add_argument("--model", help="Model name override")
     parser.add_argument("--ollama-url", default=None, help="Ollama server URL (default: OLLAMA_URL env or http://localhost:11434)")
     parser.add_argument("--work-dir", help="Working directory (default: current)")
-    parser.add_argument("--no-stream", action="store_true", help="Disable streaming output (streaming is on by default)")
+    # Streaming is always enabled for all providers
     parser.add_argument("--no-resume", action="store_true", help="Don't resume previous session")
     parser.add_argument("--test", action="store_true", help="Run self-test")
 
@@ -351,7 +346,7 @@ Examples:
         on_diff=_on_diff,
         on_stream_token=_on_stream_token,
         on_ask_user=_on_ask_user,
-        streaming=not args.no_stream,
+        streaming=True,
     )
 
     # Initialize
