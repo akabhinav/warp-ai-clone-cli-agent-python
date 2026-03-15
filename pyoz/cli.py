@@ -76,13 +76,25 @@ def _create_provider(args: argparse.Namespace) -> BaseLLMProvider:
         from pyoz.providers.openai_provider import OpenAIProvider
         return OpenAIProvider(api_key=api_key, model=args.model)
 
+    elif provider == "deepseek":
+        api_key = (
+            args.api_key
+            or os.environ.get("DEEPSEEK_API_KEY")
+            or _read_secret_file("/run/secrets/deepseek_api_key")
+        )
+        if not api_key:
+            print_error("--api-key or DEEPSEEK_API_KEY environment variable required for DeepSeek")
+            sys.exit(1)
+        from pyoz.providers.deepseek_provider import DeepSeekProvider
+        return DeepSeekProvider(api_key=api_key, model=args.model)
+
     elif provider == "ollama":
         from pyoz.providers.ollama_provider import OllamaProvider
         ollama_url = args.ollama_url or os.environ.get("OLLAMA_URL")
         return OllamaProvider(model=args.model, base_url=ollama_url)
 
     else:
-        print_error(f"Unknown provider '{provider}'. Use: claude, openai, ollama")
+        print_error(f"Unknown provider '{provider}'. Use: claude, openai, ollama, deepseek")
         sys.exit(1)
 
 
@@ -311,7 +323,7 @@ Examples:
   python pyoz.py --test
         """,
     )
-    parser.add_argument("--provider", default="claude", choices=["claude", "openai", "ollama"],
+    parser.add_argument("--provider", default="claude", choices=["claude", "openai", "ollama", "deepseek"],
                         help="LLM provider (default: claude)")
     parser.add_argument("--api-key", help="API key (or set ANTHROPIC_API_KEY / OPENAI_API_KEY env var)")
     parser.add_argument("--model", help="Model name override")
