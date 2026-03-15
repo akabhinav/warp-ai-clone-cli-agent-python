@@ -1,11 +1,12 @@
 """Tests for the agent loop."""
 
+import json
 import os
 import tempfile
 import pytest
 from unittest.mock import MagicMock
 
-from pyoz.agent import Agent, _build_system_prompt, _load_rules
+from pyoz.agent import Agent, _build_system_prompt, _convert_messages, _load_rules
 from pyoz.providers.base import BaseLLMProvider, LLMResponse, ToolCall
 
 
@@ -256,3 +257,319 @@ class TestAgentClear:
         agent.clear_history()
         assert len(agent.messages) == 0
         assert agent.turn_count == 0
+
+
+class TestConvertMessages:
+    """Tests for _convert_messages — cross-provider session format conversion."""
+
+    # --- Same-family: no conversion needed ---
+
+    def test_same_provider_no_conversion(self):
+        msgs = [{"role": "user", "content": "hello"}]
+        result = _convert_messages(msgs, "claude", "claude")
+        assert result is msgs  # same object, untouched
+
+    def test_openai_to_deepseek_no_conversion(self):
+        msgs = [
+            {"role": "user", "content": "hello"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "tc1",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"path": "x"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "tc1", "content": "file contents"},
+        ]
+        result = _convert_messages(msgs, "openai", "deepseek")
+        assert result is msgs  # same object, untouched
+
+    def test_deepseek_to_openai_no_conversion(self):
+        msgs = [{"role": "user", "content": "hi"}]
+        result = _convert_messages(msgs, "deepseek", "openai")
+        assert result is msgs
+
+    # --- Claude → OpenAI/DeepSeek ---
+
+    def test_claude_to_openai_tool_use(self):
+        """Claude tool_use blocks should become OpenAI tool_calls."""
+        msgs = [
+            {"role": "user", "content": "list files"},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me check."},
+                    {
+                        "type": "tool_use",
+                        "id": "tc1",
+                        "name": "list_directory",
+                        "input": {"path": "/tmp"},
+                    },
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tc1",
+                        "content": "file1.py\nfile2.py",
+                    },
+                ],
+            },
+            {"role": "assistant", "content": "Found 2 files."},
+        ]
+        result = _convert_messages(msgs, "claude", "deepseek")
+
+        # msg[0]: plain user message — unchanged
+        assert result[0] == {"role": "user", "content": "list files"}
+
+        # msg[1]: assistant with tool_calls
+        assert result[1]["role"] == "assistant"
+        assert result[1]["content"] == "Let me check."
+        assert len(result[1]["tool_calls"]) == 1
+        tc = result[1]["tool_calls"][0]
+        assert tc["id"] == "tc1"
+        assert tc["type"] == "function"
+        assert tc["function"]["name"] == "list_directory"
+        assert json.loads(tc["function"]["arguments"]) == {"path": "/tmp"}
+
+        # msg[2]: tool result → role=tool message
+        assert result[2]["role"] == "tool"
+        assert result[2]["tool_call_id"] == "tc1"
+        assert result[2]["content"] == "file1.py\nfile2.py"
+
+        # msg[3]: plain assistant text — unchanged
+        assert result[3] == {"role": "assistant", "content": "Found 2 files."}
+
+    def test_claude_to_openai_multiple_tool_results(self):
+        """Multiple tool_result blocks in one Claude user message
+        become separate tool messages."""
+        msgs = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tc1",
+                        "content": "result1",
+                    },
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tc2",
+                        "content": "result2",
+                    },
+                ],
+            },
+        ]
+        result = _convert_messages(msgs, "claude", "openai")
+        assert len(result) == 2
+        assert result[0] == {
+            "role": "tool",
+            "tool_call_id": "tc1",
+            "content": "result1",
+        }
+        assert result[1] == {
+            "role": "tool",
+            "tool_call_id": "tc2",
+            "content": "result2",
+        }
+
+    def test_claude_to_openai_text_only_messages_unchanged(self):
+        """Plain text messages should pass through unchanged."""
+        msgs = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = _convert_messages(msgs, "claude", "deepseek")
+        assert result == msgs
+
+    # --- OpenAI/DeepSeek → Claude ---
+
+    def test_openai_to_claude_tool_calls(self):
+        """OpenAI tool_calls should become Claude content array
+        with tool_use blocks."""
+        msgs = [
+            {"role": "user", "content": "list files"},
+            {
+                "role": "assistant",
+                "content": "Let me check.",
+                "tool_calls": [
+                    {
+                        "id": "tc1",
+                        "type": "function",
+                        "function": {
+                            "name": "list_directory",
+                            "arguments": '{"path": "/tmp"}',
+                        },
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "tc1",
+                "content": "file1.py\nfile2.py",
+            },
+            {"role": "assistant", "content": "Found 2 files."},
+        ]
+        result = _convert_messages(msgs, "deepseek", "claude")
+
+        # msg[0]: plain user — unchanged
+        assert result[0] == {"role": "user", "content": "list files"}
+
+        # msg[1]: assistant with content array
+        assert result[1]["role"] == "assistant"
+        content = result[1]["content"]
+        assert isinstance(content, list)
+        assert content[0] == {"type": "text", "text": "Let me check."}
+        assert content[1]["type"] == "tool_use"
+        assert content[1]["id"] == "tc1"
+        assert content[1]["name"] == "list_directory"
+        assert content[1]["input"] == {"path": "/tmp"}
+
+        # msg[2]: tool → user with tool_result
+        assert result[2]["role"] == "user"
+        assert isinstance(result[2]["content"], list)
+        assert result[2]["content"][0]["type"] == "tool_result"
+        assert result[2]["content"][0]["tool_use_id"] == "tc1"
+
+        # msg[3]: plain assistant — unchanged
+        assert result[3] == {"role": "assistant", "content": "Found 2 files."}
+
+    def test_openai_to_claude_consecutive_tool_results_merged(self):
+        """Consecutive tool role messages should be merged into one
+        Claude user message."""
+        msgs = [
+            {"role": "tool", "tool_call_id": "tc1", "content": "result1"},
+            {"role": "tool", "tool_call_id": "tc2", "content": "result2"},
+        ]
+        result = _convert_messages(msgs, "openai", "claude")
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+        assert len(result[0]["content"]) == 2
+        assert result[0]["content"][0]["tool_use_id"] == "tc1"
+        assert result[0]["content"][1]["tool_use_id"] == "tc2"
+
+    def test_openai_to_claude_text_only_unchanged(self):
+        """Plain text messages pass through for OpenAI→Claude too."""
+        msgs = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi there"},
+        ]
+        result = _convert_messages(msgs, "openai", "claude")
+        assert result == msgs
+
+    # --- Edge cases ---
+
+    def test_empty_messages(self):
+        assert _convert_messages([], "claude", "deepseek") == []
+        assert _convert_messages([], "deepseek", "claude") == []
+
+    def test_claude_to_openai_assistant_no_text(self):
+        """Assistant with only tool_use (no text block) should get
+        empty content string."""
+        msgs = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tc1",
+                        "name": "run_command",
+                        "input": {"command": "ls"},
+                    },
+                ],
+            },
+        ]
+        result = _convert_messages(msgs, "claude", "deepseek")
+        assert result[0]["content"] == ""
+        assert len(result[0]["tool_calls"]) == 1
+
+    def test_openai_to_claude_assistant_no_text(self):
+        """Assistant with empty content + tool_calls should only have
+        tool_use blocks."""
+        msgs = [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "tc1",
+                        "type": "function",
+                        "function": {
+                            "name": "run_command",
+                            "arguments": '{"command": "ls"}',
+                        },
+                    },
+                ],
+            },
+        ]
+        result = _convert_messages(msgs, "openai", "claude")
+        content = result[0]["content"]
+        assert isinstance(content, list)
+        # no text block since content was empty
+        assert len(content) == 1
+        assert content[0]["type"] == "tool_use"
+
+    def test_ollama_to_claude(self):
+        """Ollama is OpenAI-style, so conversion to Claude should work."""
+        msgs = [
+            {
+                "role": "assistant",
+                "content": "checking",
+                "tool_calls": [
+                    {
+                        "id": "tc1",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": '{"path": "x.py"}',
+                        },
+                    },
+                ],
+            },
+            {"role": "tool", "tool_call_id": "tc1", "content": "code here"},
+        ]
+        result = _convert_messages(msgs, "ollama", "claude")
+        assert result[0]["role"] == "assistant"
+        assert isinstance(result[0]["content"], list)
+        assert result[1]["role"] == "user"
+        assert result[1]["content"][0]["type"] == "tool_result"
+
+    def test_claude_to_ollama(self):
+        """Claude to Ollama conversion should work like Claude to OpenAI."""
+        msgs = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tc1",
+                        "name": "read_file",
+                        "input": {"path": "x.py"},
+                    },
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tc1",
+                        "content": "code here",
+                    },
+                ],
+            },
+        ]
+        result = _convert_messages(msgs, "claude", "ollama")
+        assert result[0]["role"] == "assistant"
+        assert "tool_calls" in result[0]
+        assert result[1]["role"] == "tool"
+        assert result[1]["tool_call_id"] == "tc1"
